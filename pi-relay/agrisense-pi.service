@@ -1,0 +1,25 @@
+# systemd unit — runs the Pi agent on boot and restarts it on failure.
+# Install:
+#   sudo cp agrisense-pi.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now agrisense-pi
+#   journalctl -u agrisense-pi -f          # watch logs
+[Unit]
+Description=Smart AgriSense Raspberry Pi Edge Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/agrisense
+ExecStart=/usr/bin/python3 /home/pi/agrisense/pi_agent.py
+Restart=always
+RestartSec=10
+# ── Point the Pi at your cloud VPS ────────────────────────────────────────────
+Environment=CLOUD_API=https://api.your-domain.com
+Environment=USE_INGRESS=true
+Environment=MQTT_BROKER=YOUR_VPS_PUBLIC_IP
+Environment=MQTT_PORT=1883
+Environment=SENSOR_INTERVAL=60
+
+[Install]
+WantedBy=multi-user.target

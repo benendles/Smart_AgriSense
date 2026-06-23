@@ -1,0 +1,13 @@
+# keep build context small — models are copied per-service, not excluded
+**/__pycache__/
+**/*.pyc
+*.log
+/tmp/
+pi_relay_simulator.py
+pi-relay/
+k8s/
+*.md
+.env
+.env.*
+!.env.example
+.git/

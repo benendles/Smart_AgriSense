@@ -1,0 +1,85 @@
+# Smart AgriSense — full backend stack for a single VPS.
+#   docker compose up -d --build
+# Brings up the MQTT broker + the four AI microservices. The Next.js web app
+# (smart-agrisense) points its *_SERVICE_URL vars at these published ports.
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: agrisense-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"        # Raspberry Pi connects here (open this port on the VPS firewall)
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    networks: [agrisense]
+
+  plant-detection:
+    build: { context: ., args: { SERVICE: plant-detection } }
+    image: ${REGISTRY:-agrisense}/plant-detection:${IMAGE_TAG:-latest}
+    container_name: agrisense-plant
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      MQTT_BROKER: ${MQTT_BROKER:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+    ports: ["4003:8000"]
+    depends_on: [mosquitto]
+    networks: [agrisense]
+
+  insect-detection:
+    build: { context: ., args: { SERVICE: insect-detection } }
+    image: ${REGISTRY:-agrisense}/insect-detection:${IMAGE_TAG:-latest}
+    container_name: agrisense-insect
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      MQTT_BROKER: ${MQTT_BROKER:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+    ports: ["4004:8000"]
+    depends_on: [mosquitto]
+    networks: [agrisense]
+
+  disease-detection:
+    build: { context: ., args: { SERVICE: disease-detection } }
+    image: ${REGISTRY:-agrisense}/disease-detection:${IMAGE_TAG:-latest}
+    container_name: agrisense-disease
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      MQTT_BROKER: ${MQTT_BROKER:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+    ports: ["4005:8000"]
+    depends_on: [mosquitto]
+    networks: [agrisense]
+
+  crop-recommendation:
+    build: { context: ., args: { SERVICE: crop-recommendation } }
+    image: ${REGISTRY:-agrisense}/crop-recommendation:${IMAGE_TAG:-latest}
+    container_name: agrisense-crop
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+    ports: ["4006:8000"]
+    networks: [agrisense]
+
+  advisory:
+    build: { context: ., args: { SERVICE: advisory } }
+    image: ${REGISTRY:-agrisense}/advisory:${IMAGE_TAG:-latest}
+    container_name: agrisense-advisory
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      ADVISORY_MODEL: ${ADVISORY_MODEL:-claude-opus-4-8}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}   # set in .env on the VPS
+    ports: ["4007:8000"]
+    depends_on: [plant-detection, insect-detection, disease-detection, crop-recommendation]
+    networks: [agrisense]
+
+networks:
+  agrisense:
+    driver: bridge
+
+volumes:
+  mosquitto-data:

@@ -1,0 +1,170 @@
+# Smart AgriSense — the four AI microservices.
+# Replace REGISTRY below (or via kustomize/sed in CI) with your image registry.
+# Each Deployment bakes its model into the image, so no PVC/model volume needed.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: plant-detection, namespace: agrisense }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: plant-detection } }
+  template:
+    metadata: { labels: { app: plant-detection } }
+    spec:
+      containers:
+        - name: plant-detection
+          image: REGISTRY/plant-detection:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: PORT, value: "8000" }
+            - { name: MQTT_BROKER, value: "mosquitto" }
+            - { name: MQTT_PORT, value: "1883" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: plant-detection, namespace: agrisense }
+spec:
+  selector: { app: plant-detection }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: insect-detection, namespace: agrisense }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: insect-detection } }
+  template:
+    metadata: { labels: { app: insect-detection } }
+    spec:
+      containers:
+        - name: insect-detection
+          image: REGISTRY/insect-detection:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: PORT, value: "8000" }
+            - { name: MQTT_BROKER, value: "mosquitto" }
+            - { name: MQTT_PORT, value: "1883" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: insect-detection, namespace: agrisense }
+spec:
+  selector: { app: insect-detection }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: disease-detection, namespace: agrisense }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: disease-detection } }
+  template:
+    metadata: { labels: { app: disease-detection } }
+    spec:
+      containers:
+        - name: disease-detection
+          image: REGISTRY/disease-detection:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: PORT, value: "8000" }
+            - { name: MQTT_BROKER, value: "mosquitto" }
+            - { name: MQTT_PORT, value: "1883" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: disease-detection, namespace: agrisense }
+spec:
+  selector: { app: disease-detection }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: crop-recommendation, namespace: agrisense }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: crop-recommendation } }
+  template:
+    metadata: { labels: { app: crop-recommendation } }
+    spec:
+      containers:
+        - name: crop-recommendation
+          image: REGISTRY/crop-recommendation:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: PORT, value: "8000" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: crop-recommendation, namespace: agrisense }
+spec:
+  selector: { app: crop-recommendation }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+# Advisory "brain" — reasons over the four models' /latest outputs with Claude.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: advisory, namespace: agrisense }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: advisory } }
+  template:
+    metadata: { labels: { app: advisory } }
+    spec:
+      containers:
+        - name: advisory
+          image: REGISTRY/advisory:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: PORT, value: "8000" }
+            - { name: ADVISORY_MODEL, value: "claude-opus-4-8" }
+            # In-cluster URLs of the four model services (ClusterIP DNS names).
+            - { name: CROP_URL,    value: "http://crop-recommendation:8000/recommendation/latest" }
+            - { name: PLANT_URL,   value: "http://plant-detection:8000/plant/latest" }
+            - { name: INSECT_URL,  value: "http://insect-detection:8000/insect/latest" }
+            - { name: DISEASE_URL, value: "http://disease-detection:8000/disease/latest" }
+            # Claude API key from the advisory-secrets Secret (created by the pipeline).
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: advisory-secrets, key: ANTHROPIC_API_KEY }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: advisory, namespace: agrisense }
+spec:
+  selector: { app: advisory }
+  ports: [{ port: 8000, targetPort: 8000 }]

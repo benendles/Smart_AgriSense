@@ -1,0 +1,21 @@
+# Routes the public API host to each microservice by URL path prefix.
+# Requires an ingress controller (e.g. ingress-nginx) on the cluster.
+# The Raspberry Pi and the web app both call https://api.your-domain.com/<prefix>.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agrisense-api
+  namespace: agrisense
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"   # allow camera image uploads
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.your-domain.com
+      http:
+        paths:
+          - { path: /plant,          pathType: Prefix, backend: { service: { name: plant-detection,     port: { number: 8000 } } } }
+          - { path: /insect,         pathType: Prefix, backend: { service: { name: insect-detection,    port: { number: 8000 } } } }
+          - { path: /disease,        pathType: Prefix, backend: { service: { name: disease-detection,   port: { number: 8000 } } } }
+          - { path: /recommendation, pathType: Prefix, backend: { service: { name: crop-recommendation, port: { number: 8000 } } } }
+          - { path: /agriculture,    pathType: Prefix, backend: { service: { name: advisory,            port: { number: 8000 } } } }

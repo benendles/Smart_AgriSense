@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: agrisense
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mosquitto } }
+  template:
+    metadata: { labels: { app: mosquitto } }
+    spec:
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2
+          ports: [{ containerPort: 1883 }]
+          volumeMounts:
+            - { name: config, mountPath: /mosquitto/config/mosquitto.conf, subPath: mosquitto.conf }
+      volumes:
+        - name: config
+          configMap: { name: mosquitto-config }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: agrisense
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true
+    persistence false
+---
+# Exposed as a NodePort so the off-cluster Raspberry Pi can reach the broker
+# at <VPS_PUBLIC_IP>:31883. For production, front it with a LoadBalancer + TLS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto
+  namespace: agrisense
+spec:
+  type: NodePort
+  selector: { app: mosquitto }
+  ports:
+    - port: 1883
+      targetPort: 1883
+      nodePort: 31883

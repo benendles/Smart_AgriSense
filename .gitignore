@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets — NEVER commit these (the real Claude key lives here)
+.env
+
+# OS / editor noise
+.DS_Store
+*.log
+*.swp
+
+# NOTE: the *.pth model weights ARE committed on purpose — the Dockerfile bakes
+# them into each image at build time, so the pipeline needs them in the repo.

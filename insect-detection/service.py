@@ -1,0 +1,164 @@
+import io
+import os
+import json
+from datetime import datetime
+from pathlib import Path
+
+import torch
+from torchvision import transforms
+from PIL import Image
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+from models import PlantInsectCNN
+from inference import load_model, predict, CLASSES
+
+# ── Config ────────────────────────────────────────────────────────────────────
+MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_model.pth"))
+PORT        = int(os.getenv("PORT", 4004))
+MQTT_BROKER = os.getenv("MQTT_BROKER", "")   # e.g. "192.168.1.x" — leave empty if no Pi yet
+MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
+
+device = torch.device("cuda" if torch.cuda.is_available() else
+                    "mps"  if torch.backends.mps.is_available() else "cpu")
+
+# ── Treatment advice per class ────────────────────────────────────────────────
+TREATMENT = {
+    "Adristyrannus":           "Apply systemic insecticide. Monitor nearby crops for spread.",
+    "Aphids":                  "Spray neem oil solution (5ml/L). Remove heavily infested leaves.",
+    "Beetle":                  "Hand-pick at dawn. Apply kaolin clay as a deterrent.",
+    "Bugs":                    "Apply pyrethrin spray. Use sticky traps near affected plants.",
+    "Cabbage Looper":          "Apply Bacillus thuringiensis (Bt) spray on undersides of leaves.",
+    "Cicadellidae":            "Use yellow sticky traps. Apply systemic insecticide if severe.",
+    "Cutworm":                 "Apply collar barriers around stems. Use diatomaceous earth.",
+    "Earwig":                  "Set rolled newspaper traps at night. Apply diatomaceous earth.",
+    "FieldCricket":            "Remove crop debris. Apply bait insecticide around field edges.",
+    "Grasshopper":             "Apply Metarhizium biopesticide. Use barrier crops.",
+    "Mediterranean fruit fly": "Use protein bait traps. Bag fruits early. Destroy fallen fruit.",
+    "Mites":                   "Spray water forcefully on leaves. Apply neem oil every 3 days.",
+    "RedSpider":               "Increase humidity. Apply miticide if severe. Remove infested leaves.",
+    "Riptortus":               "Hand-pick adults. Apply pyrethroid insecticide at base of stems.",
+    "Slug":                    "Apply iron phosphate bait. Use copper tape barriers around beds.",
+    "Snail":                   "Hand-pick at night. Apply iron phosphate pellets around plants.",
+    "Thrips":                  "Use blue sticky traps. Apply spinosad or abamectin spray.",
+    "Weevil":                  "Apply beneficial nematodes to soil. Use sticky band traps.",
+    "Whitefly":                "Use yellow sticky traps. Apply insecticidal soap or neem oil.",
+}
+
+SEVERITY = {
+    "Adristyrannus": "medium", "Aphids": "medium", "Beetle": "low",
+    "Bugs": "medium", "Cabbage Looper": "high", "Cicadellidae": "low",
+    "Cutworm": "medium", "Earwig": "low", "FieldCricket": "low",
+    "Grasshopper": "medium", "Mediterranean fruit fly": "high", "Mites": "low",
+    "RedSpider": "medium", "Riptortus": "medium", "Slug": "low",
+    "Snail": "low", "Thrips": "medium", "Weevil": "high", "Whitefly": "medium",
+}
+
+# ── Load model at startup ─────────────────────────────────────────────────────
+print(f"Loading model from {MODEL_PATH} on {device}...")
+model = load_model(MODEL_PATH, device)
+print("Model ready.")
+
+# In-memory store for the latest result
+_latest_result: dict | None = None
+
+# ── FastAPI app ───────────────────────────────────────────────────────────────
+app = FastAPI(title="AgriSense Insect Detection Service", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def run_inference(image_bytes: bytes) -> dict:
+    """Run PlantInsectCNN on raw image bytes and return structured result."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225]),
+    ])
+    tensor = transform(img).unsqueeze(0).to(device)
+
+    with torch.inference_mode():
+        logits = model(tensor)
+        probs = torch.softmax(logits, dim=1).squeeze()
+
+    top_probs, top_idxs = probs.topk(3)
+    predictions = [
+        {"pest": CLASSES[idx.item()], "confidence": round(prob.item(), 4)}
+        for prob, idx in zip(top_probs, top_idxs)
+    ]
+
+    top = predictions[0]
+    pest, conf = top["pest"], top["confidence"]
+
+    return {
+        "pest":           pest,
+        "confidence":     conf,
+        "plantAffected":  "General",
+        "severity":       SEVERITY.get(pest, "medium"),
+        "treatment":      TREATMENT.get(pest, "Consult an agricultural extension officer."),
+        "timestamp":      datetime.utcnow().isoformat() + "Z",
+        "imageUrl":       None,
+        "topPredictions": predictions,
+    }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "device": str(device), "model": str(MODEL_PATH)}
+
+
+@app.get("/insect/latest")
+def get_latest():
+    """Web app polls this every 10 seconds."""
+    if _latest_result is None:
+        raise HTTPException(status_code=404, detail="No detection yet")
+    return _latest_result
+
+
+@app.post("/insect/analyze")
+async def analyze(image: UploadFile = File(...)):
+    """
+    Raspberry Pi calls this after capturing a photo.
+    Accepts: multipart/form-data with field name 'image'
+    """
+    global _latest_result
+    image_bytes = await image.read()
+    result = run_inference(image_bytes)
+    _latest_result = result
+    return result
+
+
+@app.post("/insect/capture")
+def trigger_capture():
+    """
+    Web app calls this when the farmer presses 'Take Image Now'.
+    Publishes MQTT command to the Raspberry Pi to capture a photo.
+    """
+    if not MQTT_BROKER:
+        return {"queued": False, "reason": "MQTT_BROKER not configured — set env var to connect Pi"}
+
+    try:
+        import paho.mqtt.publish as publish
+        publish.single(
+            topic="agrisense/camera/capture",
+            payload=json.dumps({"service": "insect"}),
+            hostname=MQTT_BROKER,
+            port=MQTT_PORT,
+        )
+        return {"queued": True}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"MQTT publish failed: {e}")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("service:app", host="0.0.0.0", port=PORT, reload=False)
