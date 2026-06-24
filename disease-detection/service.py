@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from torchvision import transforms
@@ -229,6 +229,43 @@ def get_history(limit: int = 50):
 @app.post("/disease/analyze")
 async def analyze(image: UploadFile = File(...)):
     return store.save(run_inference(await image.read()))
+
+
+# ── Capture review flow ───────────────────────────────────────────────────────
+# Pi uploads to /upload (held, NOT analysed). Farmer reviews via /pending, then
+# /confirm runs inference, or /discard drops it so a new photo can be taken.
+_pending: bytes | None = None
+
+
+@app.post("/disease/upload")
+async def upload(image: UploadFile = File(...)):
+    global _pending
+    _pending = await image.read()
+    return {"pending": True}
+
+
+@app.get("/disease/pending")
+def pending():
+    if _pending is None:
+        raise HTTPException(status_code=404, detail="No pending image")
+    return Response(content=_pending, media_type="image/jpeg")
+
+
+@app.post("/disease/confirm")
+def confirm():
+    global _pending
+    if _pending is None:
+        raise HTTPException(status_code=404, detail="No pending image")
+    result = store.save(run_inference(_pending))
+    _pending = None
+    return result
+
+
+@app.post("/disease/discard")
+def discard():
+    global _pending
+    _pending = None
+    return {"discarded": True}
 
 
 @app.post("/disease/capture")

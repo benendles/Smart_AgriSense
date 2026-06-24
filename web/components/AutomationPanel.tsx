@@ -15,7 +15,7 @@ const ACTUATOR_CONFIG: Record<
   { label: string; icon: typeof Droplets; description: string }
 > = {
   irrigation: {
-    label: "Irrigation Pump",
+    label: "Irrigation Pumps",
     icon: Droplets,
     description: "Water supply to crops",
   },

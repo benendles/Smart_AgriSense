@@ -40,11 +40,13 @@ CAPTURE_TOPIC = os.getenv("CAPTURE_TOPIC", "agrisense/camera/capture")
 SENSOR_INTERVAL = int(os.getenv("SENSOR_INTERVAL", "60"))  # seconds between sensor pushes
 
 # Path-based (ingress) vs port-based (docker-compose) URL builders
-def analyze_url(service: str) -> str:
+def upload_url(service: str) -> str:
+    # Upload the captured image for the farmer to REVIEW (not auto-analyse).
+    # The web app shows it, then calls /confirm (analyse) or /discard (retake).
     name = {"plant": "plant", "insect": "insect", "disease": "disease"}[service]
     if USE_INGRESS:
-        return f"{CLOUD_API}/{name}/{name}/analyze"
-    return f"{CLOUD_API}:{PORTS[service]}/{name}/analyze"
+        return f"{CLOUD_API}/{name}/{name}/upload"
+    return f"{CLOUD_API}:{PORTS[service]}/{name}/upload"
 
 def recommend_url() -> str:
     if USE_INGRESS:
@@ -179,10 +181,10 @@ HW = Hardware()
 def on_capture(service: str):
     try:
         img = HW.capture_jpeg()
-        url = analyze_url(service)
+        url = upload_url(service)
         files = {"image": (f"{service}.jpg", img, "image/jpeg")}
         r = requests.post(url, files=files, timeout=60); r.raise_for_status()
-        print(f"[camera] {service} -> uploaded, result: {r.json().get('confidence')}")
+        print(f"[camera] {service} -> uploaded, awaiting farmer review/confirm")
     except Exception as e:
         print(f"[camera] {service} capture/upload failed: {e}")
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 from torchvision import transforms
 from PIL import Image
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import PlantInsectCNN
@@ -136,6 +136,43 @@ async def analyze(image: UploadFile = File(...)):
     Accepts: multipart/form-data with field name 'image'
     """
     return store.save(run_inference(await image.read()))
+
+
+# ── Capture review flow ───────────────────────────────────────────────────────
+# Pi uploads to /upload (held, NOT analysed). Farmer reviews via /pending, then
+# /confirm runs inference, or /discard drops it so a new photo can be taken.
+_pending: bytes | None = None
+
+
+@app.post("/insect/upload")
+async def upload(image: UploadFile = File(...)):
+    global _pending
+    _pending = await image.read()
+    return {"pending": True}
+
+
+@app.get("/insect/pending")
+def pending():
+    if _pending is None:
+        raise HTTPException(status_code=404, detail="No pending image")
+    return Response(content=_pending, media_type="image/jpeg")
+
+
+@app.post("/insect/confirm")
+def confirm():
+    global _pending
+    if _pending is None:
+        raise HTTPException(status_code=404, detail="No pending image")
+    result = store.save(run_inference(_pending))
+    _pending = None
+    return result
+
+
+@app.post("/insect/discard")
+def discard():
+    global _pending
+    _pending = None
+    return {"discarded": True}
 
 
 @app.post("/insect/capture")
