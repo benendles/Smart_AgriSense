@@ -70,11 +70,15 @@ pipeline {
 
     stage('Smoke test') {
       steps {
-        sh '''
-          for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
-            kubectl -n agrisense exec deploy/$d -- curl -fsS http://localhost:8000/health
-          done
-        '''
+        // Needs the kubeconfig too — without it kubectl defaults to localhost:8080
+        // (which inside this container is Jenkins itself, hence the login page).
+        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+          sh '''
+            for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
+              kubectl -n agrisense exec deploy/$d -- curl -fsS http://localhost:8000/health
+            done
+          '''
+        }
       }
     }
   }
