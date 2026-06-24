@@ -86,7 +86,7 @@ pipeline {
             for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
               kubectl -n agrisense exec deploy/$d -- curl -fsS http://localhost:8000/health
             done
-            kubectl -n agrisense exec deploy/web-app -- wget -qO- http://localhost:3000 >/dev/null && echo "web-app OK"
+            kubectl -n agrisense exec deploy/web-app -- node -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" && echo "web-app OK"
           '''
         }
       }
