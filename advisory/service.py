@@ -37,6 +37,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from store import Store
+
 # ── Config ────────────────────────────────────────────────────────────────────
 PORT     = int(os.getenv("PORT", 4007))
 MODEL    = os.getenv("ADVISORY_MODEL", "claude-opus-4-8")
@@ -107,6 +109,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 # cache: avoid a Claude call on every 30s dashboard poll — only regenerate when
 # the underlying data changes (hash differs) or the TTL has elapsed.
 _cache: dict = {"hash": None, "data": None, "at": 0.0}
+store = Store("advisory")   # persists every generated advisory to /data/advisory.db
 
 
 def gather() -> dict:
@@ -182,7 +185,13 @@ def agriculture_advice():
         raise HTTPException(status_code=502, detail=f"Advisory generation failed: {e}")
 
     _cache.update(hash=digest, data=data, at=time.time())
+    store.save(data)   # keep a history of generated advisories
     return data
+
+
+@app.get("/agriculture/history")
+def agriculture_history(limit: int = 20):
+    return store.history(limit)
 
 
 if __name__ == "__main__":

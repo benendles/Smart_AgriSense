@@ -11,6 +11,7 @@ from PIL import Image
 from torchvision import transforms
 
 from inference import CLASSES, NUM_CLASSES, load_model
+from store import Store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_disease_model.pth"))
@@ -154,7 +155,7 @@ print(f"Loading model from {MODEL_PATH} on {device}...")
 model = load_model(MODEL_PATH, device)
 print("Model ready.")
 
-_latest_result: dict | None = None
+store = Store("disease")   # SQLite-backed history at /data/disease.db
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="AgriSense Disease Detection Service", version="1.0.0")
@@ -214,16 +215,20 @@ def health():
 
 @app.get("/disease/latest")
 def get_latest():
-    if _latest_result is None:
+    data = store.latest()
+    if data is None:
         raise HTTPException(status_code=404, detail="No detection yet")
-    return _latest_result
+    return data
+
+
+@app.get("/disease/history")
+def get_history(limit: int = 50):
+    return store.history(limit)
 
 
 @app.post("/disease/analyze")
 async def analyze(image: UploadFile = File(...)):
-    global _latest_result
-    _latest_result = run_inference(await image.read())
-    return _latest_result
+    return store.save(run_inference(await image.read()))
 
 
 @app.post("/disease/capture")

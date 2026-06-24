@@ -11,6 +11,7 @@ from PIL import Image
 from torchvision import transforms
 
 from inference import CLASSES, NUM_CLASSES, load_model
+from store import Store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_plant_model.pth"))
@@ -49,7 +50,7 @@ print(f"Loading model from {MODEL_PATH} on {device}...")
 model = load_model(MODEL_PATH, device)
 print("Model ready.")
 
-_latest: dict | None = None
+store = Store("plant")   # SQLite-backed history at /data/plant.db
 
 app = FastAPI(title="AgriSense Plant Detection Service", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
@@ -92,16 +93,20 @@ def health():
 
 @app.get("/plant/latest")
 def get_latest():
-    if _latest is None:
+    data = store.latest()
+    if data is None:
         raise HTTPException(status_code=404, detail="No detection yet")
-    return _latest
+    return data
+
+
+@app.get("/plant/history")
+def get_history(limit: int = 50):
+    return store.history(limit)
 
 
 @app.post("/plant/analyze")
 async def analyze(image: UploadFile = File(...)):
-    global _latest
-    _latest = run_inference(await image.read())
-    return _latest
+    return store.save(run_inference(await image.read()))
 
 
 @app.post("/plant/capture")

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from inference import CLASSES, FEATURES, SCALER, load_model, predict
+from store import Store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MODEL_PATH = Path(os.getenv("MODEL_PATH", "best_recommendation_model.pth"))
@@ -21,7 +22,7 @@ print(f"Loading model from {MODEL_PATH} on {device}...")
 model = load_model(MODEL_PATH, device)
 print("Model ready.")
 
-_latest: dict | None = None
+store = Store("crop")   # SQLite-backed history at /data/crop.db
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="AgriSense Crop Recommendation Service", version="1.0.0")
@@ -51,26 +52,30 @@ def health():
 
 @app.get("/recommendation/latest")
 def get_latest():
-    if _latest is None:
+    data = store.latest()
+    if data is None:
         raise HTTPException(status_code=404, detail="No recommendation yet")
-    return _latest
+    return data
+
+
+@app.get("/recommendation/history")
+def get_history(limit: int = 50):
+    return store.history(limit)
 
 
 @app.post("/recommendation/predict")
 def recommend(sensors: SensorInput):
-    global _latest
     sensor_dict = sensors.model_dump()
     results = predict(sensor_dict, model, device, top_k=3)
 
     top = results[0]
-    _latest = {
+    return store.save({                       # persist + return in one step
         "recommendedCrop":  top["crop"],
         "confidence":       top["confidence"],
         "topCrops":         results,
         "sensorReadings":   sensor_dict,
         "timestamp":        datetime.utcnow().isoformat() + "Z",
-    }
-    return _latest
+    })
 
 
 if __name__ == "__main__":

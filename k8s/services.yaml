@@ -26,6 +26,18 @@ spec:
           resources:
             requests: { cpu: "250m", memory: "512Mi" }
             limits:   { cpu: "1",    memory: "1Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: plant-detection-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: plant-detection-data, namespace: agrisense }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
 ---
 apiVersion: v1
 kind: Service
@@ -59,6 +71,18 @@ spec:
           resources:
             requests: { cpu: "250m", memory: "512Mi" }
             limits:   { cpu: "1",    memory: "1Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: insect-detection-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: insect-detection-data, namespace: agrisense }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
 ---
 apiVersion: v1
 kind: Service
@@ -92,6 +116,18 @@ spec:
           resources:
             requests: { cpu: "250m", memory: "512Mi" }
             limits:   { cpu: "1",    memory: "1Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: disease-detection-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: disease-detection-data, namespace: agrisense }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
 ---
 apiVersion: v1
 kind: Service
@@ -123,6 +159,18 @@ spec:
           resources:
             requests: { cpu: "100m", memory: "256Mi" }
             limits:   { cpu: "500m", memory: "512Mi" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: crop-recommendation-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: crop-recommendation-data, namespace: agrisense }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
 ---
 apiVersion: v1
 kind: Service
@@ -165,6 +213,18 @@ spec:
           resources:
             requests: { cpu: "100m", memory: "256Mi" }
             limits:   { cpu: "500m", memory: "512Mi" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: advisory-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: advisory-data, namespace: agrisense }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
 ---
 apiVersion: v1
 kind: Service

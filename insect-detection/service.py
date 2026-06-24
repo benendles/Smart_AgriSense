@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models import PlantInsectCNN
 from inference import load_model, predict, CLASSES
+from store import Store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_model.pth"))
@@ -59,8 +60,7 @@ print(f"Loading model from {MODEL_PATH} on {device}...")
 model = load_model(MODEL_PATH, device)
 print("Model ready.")
 
-# In-memory store for the latest result
-_latest_result: dict | None = None
+store = Store("insect")   # SQLite-backed history at /data/insect.db
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(title="AgriSense Insect Detection Service", version="1.0.0")
@@ -118,9 +118,15 @@ def health():
 @app.get("/insect/latest")
 def get_latest():
     """Web app polls this every 10 seconds."""
-    if _latest_result is None:
+    data = store.latest()
+    if data is None:
         raise HTTPException(status_code=404, detail="No detection yet")
-    return _latest_result
+    return data
+
+
+@app.get("/insect/history")
+def get_history(limit: int = 50):
+    return store.history(limit)
 
 
 @app.post("/insect/analyze")
@@ -129,11 +135,7 @@ async def analyze(image: UploadFile = File(...)):
     Raspberry Pi calls this after capturing a photo.
     Accepts: multipart/form-data with field name 'image'
     """
-    global _latest_result
-    image_bytes = await image.read()
-    result = run_inference(image_bytes)
-    _latest_result = result
-    return result
+    return store.save(run_inference(await image.read()))
 
 
 @app.post("/insect/capture")
