@@ -21,18 +21,23 @@ pipeline {
 
     stage('Build & Push images') {
       steps {
-        script {
-          def services = ['plant-detection','insect-detection','disease-detection','crop-recommendation','advisory']
-          docker.withRegistry("https://${REGISTRY.split('/')[0]}", REGISTRY_CRED) {
-            for (svc in services) {
-              def img = docker.build(
-                "${REGISTRY}/${svc}:${IMAGE_TAG}",
-                "--build-arg SERVICE=${svc} ."
-              )
-              img.push()
-              img.push('latest')
-            }
-          }
+        // Explicit docker login (--password-stdin) + plain build/push — the exact
+        // flow proven to work on the host. Avoids the docker.withRegistry plugin,
+        // whose temp-config login misbehaves in this manually-assembled Jenkins
+        // container and yields a broken auth despite a valid token.
+        withCredentials([usernamePassword(credentialsId: "${REGISTRY_CRED}",
+                                           usernameVariable: 'DH_USER',
+                                           passwordVariable: 'DH_PASS')]) {
+          sh '''
+            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+            for svc in plant-detection insect-detection disease-detection crop-recommendation advisory; do
+              docker build -t ${REGISTRY}/$svc:${IMAGE_TAG} --build-arg SERVICE=$svc .
+              docker push ${REGISTRY}/$svc:${IMAGE_TAG}
+              docker tag  ${REGISTRY}/$svc:${IMAGE_TAG} ${REGISTRY}/$svc:latest
+              docker push ${REGISTRY}/$svc:latest
+            done
+            docker logout
+          '''
         }
       }
     }
