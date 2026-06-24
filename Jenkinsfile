@@ -1,6 +1,6 @@
 // Smart AgriSense — CI/CD pipeline.
-// Builds the five service images, pushes them to a registry, and rolls them out
-// to the Kubernetes cluster. Configure the credentials/ids marked below in Jenkins.
+// Builds the five AI service images + the web app (web/), pushes them to a registry,
+// and rolls them all out to the Kubernetes cluster. Configure the credentials below.
 pipeline {
   agent any
 
@@ -36,6 +36,11 @@ pipeline {
               docker tag  ${REGISTRY}/$svc:${IMAGE_TAG} ${REGISTRY}/$svc:latest
               docker push ${REGISTRY}/$svc:latest
             done
+            # web app (Next.js) — built from the web/ subfolder
+            docker build -t ${REGISTRY}/smart-agrisense:${IMAGE_TAG} web/
+            docker push ${REGISTRY}/smart-agrisense:${IMAGE_TAG}
+            docker tag  ${REGISTRY}/smart-agrisense:${IMAGE_TAG} ${REGISTRY}/smart-agrisense:latest
+            docker push ${REGISTRY}/smart-agrisense:latest
             docker logout
           '''
         }
@@ -63,6 +68,10 @@ pipeline {
             for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
               kubectl -n agrisense rollout status deploy/$d --timeout=600s
             done
+            # web app — deploys into the same namespace, exposed on NodePort 30080
+            sed -e "s|REGISTRY|${REGISTRY}|g" -e "s|:latest|:${IMAGE_TAG}|g" \
+                web/k8s/web.yaml | kubectl apply -f -
+            kubectl -n agrisense rollout status deploy/web-app --timeout=300s
           '''
         }
       }
@@ -77,6 +86,7 @@ pipeline {
             for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
               kubectl -n agrisense exec deploy/$d -- curl -fsS http://localhost:8000/health
             done
+            kubectl -n agrisense exec deploy/web-app -- wget -qO- http://localhost:3000 >/dev/null && echo "web-app OK"
           '''
         }
       }
@@ -84,7 +94,7 @@ pipeline {
   }
 
   post {
-    success { echo "Deployed Smart AgriSense @ ${IMAGE_TAG}" }
+    success { echo "Deployed Smart AgriSense @ ${IMAGE_TAG} — web app at http://72.62.93.99:30080" }
     failure { echo 'Pipeline failed — check the stage logs above.' }
   }
 }
