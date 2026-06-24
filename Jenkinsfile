@@ -57,9 +57,11 @@ pipeline {
                 -e "s|:latest|:${IMAGE_TAG}|g" \
                 k8s/services.yaml | kubectl apply -f -
             kubectl apply -f k8s/ingress.yaml
-            # wait for rollouts to become healthy
+            # wait for rollouts to become healthy. 600s (not 180s) because the
+            # FIRST cold pull of the ~430MB PyTorch image takes ~2.5min on the VPS;
+            # later runs are instant (image cached on the node).
             for d in plant-detection insect-detection disease-detection crop-recommendation advisory; do
-              kubectl -n agrisense rollout status deploy/$d --timeout=180s
+              kubectl -n agrisense rollout status deploy/$d --timeout=600s
             done
           '''
         }
