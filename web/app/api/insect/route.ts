@@ -3,6 +3,7 @@ import { getInsectDetection, triggerInsectCapture } from "@/lib/services";
 
 export async function GET() {
   const data = await getInsectDetection();
+  if (!data) return new NextResponse(null, { status: 404 });
   return NextResponse.json(data);
 }
 

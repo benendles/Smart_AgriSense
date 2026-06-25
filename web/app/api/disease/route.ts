@@ -3,6 +3,7 @@ import { getDisease } from "@/lib/services";
 
 export async function GET() {
   const data = await getDisease();
+  if (!data) return new NextResponse(null, { status: 404 });
   return NextResponse.json(data);
 }
 

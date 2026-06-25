@@ -34,6 +34,11 @@ async function fetchService<T>(url: string): Promise<T | null> {
   }
 }
 
+// When ALLOW_MOCKS is false (the production default), AI services with no real
+// data return null instead of fabricated values — the UI then shows "waiting"
+// so you only ever see real Pi/model output flowing.
+const ALLOW_MOCKS = process.env.ALLOW_MOCKS === "true";
+
 // ── Sensors (maps to: Ingestion Service → sensor readings) ───────────────────
 
 const SENSOR_BASE = { temperature: 28.4, humidity: 74.2, soilMoisture: 52.1, ph: 6.3 };
@@ -84,13 +89,13 @@ function mockDisease(): DiseaseData {
   };
 }
 
-export async function getDisease(): Promise<DiseaseData> {
+export async function getDisease(): Promise<DiseaseData | null> {
   const url = process.env.DISEASE_SERVICE_URL;
   if (url) {
     const data = await fetchService<DiseaseData>(`${url}/disease/latest`);
     if (data) return data;
   }
-  return mockDisease();
+  return ALLOW_MOCKS ? mockDisease() : null;
 }
 
 // ── Crop Recommendation (maps to: Crop Recommendation Service) ───────────────
@@ -113,13 +118,13 @@ function mockRecommendation(): RecommendationData {
   };
 }
 
-export async function getRecommendation(): Promise<RecommendationData> {
+export async function getRecommendation(): Promise<RecommendationData | null> {
   const url = process.env.RECOMMENDATION_SERVICE_URL;
   if (url) {
     const data = await fetchService<RecommendationData>(`${url}/recommendation/latest`);
     if (data) return data;
   }
-  return mockRecommendation();
+  return ALLOW_MOCKS ? mockRecommendation() : null;
 }
 
 // ── Automation (maps to: Decision Engine Service) ────────────────────────────
@@ -222,13 +227,13 @@ function mockPlantDetection(): PlantDetectionData {
   };
 }
 
-export async function getPlantDetection(): Promise<PlantDetectionData> {
+export async function getPlantDetection(): Promise<PlantDetectionData | null> {
   const url = process.env.PLANT_DETECTION_SERVICE_URL;
   if (url) {
     const data = await fetchService<PlantDetectionData>(`${url}/plant/latest`);
     if (data) return data;
   }
-  return mockPlantDetection();
+  return ALLOW_MOCKS ? mockPlantDetection() : null;
 }
 
 // Sends a "capture now" command to the Pi via the Plant Detection Service.
@@ -292,13 +297,13 @@ function mockAgricultureAdvice(): AgricultureData {
   };
 }
 
-export async function getAgricultureAdvice(): Promise<AgricultureData> {
+export async function getAgricultureAdvice(): Promise<AgricultureData | null> {
   const url = process.env.AGRICULTURE_SERVICE_URL;
   if (url) {
     const data = await fetchService<AgricultureData>(`${url}/agriculture/advice`);
     if (data) return data;
   }
-  return mockAgricultureAdvice();
+  return ALLOW_MOCKS ? mockAgricultureAdvice() : null;
 }
 
 // ── Insect Detection (maps to: Insect Detection Service → PlantInsectCNN) ────
@@ -361,13 +366,13 @@ function mockInsectDetection(): InsectDetectionData {
   };
 }
 
-export async function getInsectDetection(): Promise<InsectDetectionData> {
+export async function getInsectDetection(): Promise<InsectDetectionData | null> {
   const url = process.env.INSECT_DETECTION_SERVICE_URL;
   if (url) {
     const data = await fetchService<InsectDetectionData>(`${url}/insect/latest`);
     if (data) return data;
   }
-  return mockInsectDetection();
+  return ALLOW_MOCKS ? mockInsectDetection() : null;
 }
 
 // Sends a "capture now" command → Pi takes photo → insect detection runs automatically.

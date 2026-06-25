@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { InsectDetectionData } from "@/lib/types";
-import { Bug, Camera, RefreshCw, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
+import { Bug, RefreshCw, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
+import CaptureReview from "@/components/CaptureReview";
 
 const SEVERITY_STYLES = {
   none:   { badge: "bg-green-100 text-green-800",  bar: "bg-green-500",  dot: "bg-green-400",  label: "None"   },
@@ -12,13 +13,10 @@ const SEVERITY_STYLES = {
   high:   { badge: "bg-red-100 text-red-800",       bar: "bg-red-600",    dot: "bg-red-500",    label: "High"   },
 };
 
-type CaptureState = "idle" | "sending" | "waiting";
-
 export default function InsectDetectionPage() {
   const [latest, setLatest] = useState<InsectDetectionData | null>(null);
   const [history, setHistory] = useState<InsectDetectionData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [capture, setCapture] = useState<CaptureState>("idle");
 
   const fetchLatest = useCallback(async () => {
     try {
@@ -41,24 +39,6 @@ export default function InsectDetectionPage() {
     const id = setInterval(fetchLatest, 10_000);
     return () => clearInterval(id);
   }, [fetchLatest]);
-
-  async function handleCapture() {
-    setCapture("sending");
-    try {
-      await fetch("/api/insect", { method: "POST" });
-      setCapture("waiting");
-      // poll faster while waiting for Pi response
-      const waitId = setInterval(async () => {
-        await fetchLatest();
-      }, 2000);
-      setTimeout(() => {
-        clearInterval(waitId);
-        setCapture("idle");
-      }, 15_000);
-    } catch {
-      setCapture("idle");
-    }
-  }
 
   const sev = latest ? SEVERITY_STYLES[latest.severity] : null;
   const detected = latest && latest.pest !== "No Pest Detected";
@@ -89,34 +69,8 @@ export default function InsectDetectionPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
 
-          {/* Capture command */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-sm font-semibold text-gray-700 mb-1">Raspberry Pi Camera</p>
-            <p className="text-xs text-gray-400 mb-4">
-              Press the button to send a capture command to the Pi. The Pi will take a photo, run PlantInsectCNN, and the result will appear here automatically.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleCapture}
-              disabled={capture !== "idle"}
-              className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm font-semibold transition-all ${
-                capture !== "idle"
-                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                  : "bg-primary-600 hover:bg-primary-700 text-white shadow-sm hover:shadow-md"
-              }`}
-            >
-              {capture === "idle" && <><Camera className="w-5 h-5" /> Take Image Now</>}
-              {capture === "sending" && <><Loader2 className="w-5 h-5 animate-spin" /> Sending command to Pi…</>}
-              {capture === "waiting" && <><Loader2 className="w-5 h-5 animate-spin" /> Waiting for Pi image…</>}
-            </button>
-
-            {capture === "waiting" && (
-              <p className="text-xs text-center text-gray-400 mt-2">
-                Pi is capturing and processing — result will update within seconds
-              </p>
-            )}
-          </div>
+          {/* Capture → review → confirm */}
+          <CaptureReview service="insect" onResult={fetchLatest} />
 
           {/* Latest result */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
