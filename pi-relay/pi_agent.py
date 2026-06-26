@@ -39,6 +39,16 @@ CAPTURE_TOPIC = os.getenv("CAPTURE_TOPIC", "agrisense/camera/capture")
 
 SENSOR_INTERVAL = int(os.getenv("SENSOR_INTERVAL", "60"))  # seconds between sensor pushes
 
+# ── ESP32 link (USB serial) + cloud actuator commands ─────────────────────────
+ESP_PORT = os.getenv("ESP_PORT", "/dev/ttyUSB0")   # ESP32 serial (Pi: /dev/ttyUSB0 or /dev/ttyACM0)
+ESP_BAUD = int(os.getenv("ESP_BAUD", "115200"))
+ACTUATOR_TOPIC = os.getenv("ACTUATOR_TOPIC", "agrisense/actuator/cmd")
+# N, P, K and rainfall have no sensor — forwarded from these (lab soil test + weather).
+SOIL_N   = float(os.getenv("SOIL_N", "90"))
+SOIL_P   = float(os.getenv("SOIL_P", "42"))
+SOIL_K   = float(os.getenv("SOIL_K", "43"))
+RAINFALL = float(os.getenv("RAINFALL_MM", "120"))
+
 # Path-based (ingress) vs port-based (docker-compose) URL builders
 def upload_url(service: str) -> str:
     # Upload the captured image for the farmer to REVIEW (not auto-analyse).
@@ -197,9 +207,21 @@ def mqtt_loop():
 
     def _on_connect(c, *_):
         c.subscribe(CAPTURE_TOPIC)
-        print(f"[mqtt] connected {MQTT_BROKER}:{MQTT_PORT}, subscribed {CAPTURE_TOPIC}")
+        c.subscribe(ACTUATOR_TOPIC)
+        print(f"[mqtt] connected {MQTT_BROKER}:{MQTT_PORT}, subscribed {CAPTURE_TOPIC} + {ACTUATOR_TOPIC}")
 
     def _on_message(c, u, msg):
+        # Actuator command from the cloud (e.g. pesticide from the insect AI) →
+        # relay it down to the ESP32 over serial.
+        if msg.topic == ACTUATOR_TOPIC:
+            try:
+                cmd = json.loads(msg.payload.decode())
+            except Exception:
+                return
+            print(f"[mqtt] actuator command -> ESP: {cmd}")
+            relay_to_esp(cmd)
+            return
+        # Otherwise it's a camera capture command (handled here on the Pi).
         try:
             service = json.loads(msg.payload.decode()).get("service", "plant")
         except Exception:
@@ -222,20 +244,71 @@ def mqtt_loop():
             time.sleep(10)
 
 
-# ── Job 2: periodic sensor push ───────────────────────────────────────────────
-def sensor_loop():
+# ── Job 2: ESP32 bridge — read its sensors over serial, forward to the cloud, ──
+#          and relay cloud actuator commands back down to it. ──────────────────
+_esp = None
+_esp_lock = threading.Lock()
+
+
+def esp_open():
+    """Open (once) the USB serial link to the ESP32. Returns None if unavailable
+    (e.g. ESP not plugged in / pyserial missing) so the gateway keeps running."""
+    global _esp
+    if _esp is not None:
+        return _esp
+    try:
+        import serial  # pyserial
+        _esp = serial.Serial(ESP_PORT, ESP_BAUD, timeout=2)
+        print(f"[esp] opened {ESP_PORT} @ {ESP_BAUD}")
+    except Exception as e:
+        print(f"[esp] cannot open {ESP_PORT}: {e}")
+        _esp = None
+    return _esp
+
+
+def relay_to_esp(cmd: dict):
+    """Send an actuator command JSON line down to the ESP32."""
+    s = esp_open()
+    if s is None:
+        return
+    try:
+        with _esp_lock:
+            s.write((json.dumps(cmd) + "\n").encode())
+        print(f"[esp] relayed: {cmd}")
+    except Exception as e:
+        print(f"[esp] write failed: {e}")
+
+
+def esp_serial_loop():
+    """Read the ESP32's sensor JSON lines and forward each to the crop service."""
     while True:
+        s = esp_open()
+        if s is None:
+            time.sleep(5); continue
         try:
-            readings = HW.read_sensors()
-            r = requests.post(recommend_url(), json=readings, timeout=30); r.raise_for_status()
-            crop = r.json().get("recommendedCrop")
-            print(f"[sensors] {datetime.now():%H:%M:%S} pushed {readings} -> recommend: {crop}")
+            line = s.readline().decode(errors="ignore").strip()
+            data = json.loads(line) if line else None
+        except Exception:
+            continue
+        if not data:
+            continue
+        # N/P/K/rainfall have no sensor → fill from config; temp/humidity/pH from the ESP.
+        payload = {
+            "N": SOIL_N, "P": SOIL_P, "K": SOIL_K,
+            "temperature": float(data.get("temperature", 0) or 0),
+            "humidity":    float(data.get("humidity", 0) or 0),
+            "ph":          float(data.get("ph", 7) or 7),
+            "rainfall":    RAINFALL,
+        }
+        try:
+            r = requests.post(recommend_url(), json=payload, timeout=30); r.raise_for_status()
+            print(f"[esp→cloud] {data} -> crop: {r.json().get('recommendedCrop')}")
         except Exception as e:
-            print(f"[sensors] push failed: {e}")
-        time.sleep(SENSOR_INTERVAL)
+            print(f"[esp→cloud] push failed: {e}")
 
 
 if __name__ == "__main__":
-    print(f"Smart AgriSense Pi agent starting | CLOUD_API={CLOUD_API} MQTT={MQTT_BROKER}:{MQTT_PORT}")
-    threading.Thread(target=sensor_loop, daemon=True).start()
-    mqtt_loop()   # blocks
+    print(f"Smart AgriSense Pi gateway starting | CLOUD_API={CLOUD_API} "
+          f"MQTT={MQTT_BROKER}:{MQTT_PORT} ESP={ESP_PORT}")
+    threading.Thread(target=esp_serial_loop, daemon=True).start()  # ESP sensors → cloud
+    mqtt_loop()   # blocks; handles camera captures + relays actuator commands → ESP

@@ -1,8 +1,16 @@
-# Smart AgriSense — ESP32 Irrigation Node
+# Smart AgriSense — ESP32 Sensor/Actuator Node
 
-The ESP32 reads the soil/air sensors, decides whether to irrigate **locally**
-(works even with no WiFi/cloud), drives the water pump, and reports readings to
-the cloud MQTT broker. Sketch: [`agrisense_node/agrisense_node.ino`](agrisense_node/agrisense_node.ino).
+The ESP32 reads the soil/air sensors, decides **water + fertilizer locally**
+(works even if the Pi/cloud is offline), drives the 3 relays, and is wired to the
+**Raspberry Pi over the USB cable**. It exchanges one-line JSON over the serial
+link — the **Pi is the gateway** to the cloud (no WiFi on the ESP). Pesticide is
+commanded by the cloud insect AI → Pi → ESP. Sketch:
+[`agrisense_node/agrisense_node.ino`](agrisense_node/agrisense_node.ino).
+
+```
+ESP32 ──USB serial──► Raspberry Pi (pi_agent.py gateway) ──HTTP/MQTT──► cloud
+      ◄──commands────                ◄── pesticide/fertilizer/water commands ──
+```
 
 ## 1. Wiring (default pins — change at the top of the sketch if needed)
 
@@ -24,13 +32,14 @@ supply for the pump itself (don't drive a pump straight from the ESP32).
    `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
    then Tools → Board → Boards Manager → install **esp32**.
 3. **Install libraries** (Tools → Manage Libraries): `DHT sensor library`,
-   `Adafruit Unified Sensor`, `OneWire`, `DallasTemperature`, `PubSubClient`,
-   `ArduinoJson`.
-4. Open the sketch, edit **WIFI_SSID / WIFI_PASS** (and `MQTT_HOST` is already
-   your VPS `72.62.93.99`).
+   `Adafruit Unified Sensor`, `OneWire`, `DallasTemperature`, `ArduinoJson`.
+   (No WiFi/MQTT library — the ESP talks to the Pi over serial.)
+4. No WiFi to configure. Just check the pins/calibration at the top of the sketch.
 5. Tools → Board → **ESP32 Dev Module**; Tools → Port → the port that appeared
    when you plugged in the ESP32.
-6. Click **Upload** (→). Open **Serial Monitor** at **115200 baud** to watch it.
+6. Click **Upload** (→). Open **Serial Monitor** at **115200 baud** — you'll see
+   the JSON reading lines. (In production the **Pi** reads that serial port via
+   `pi_agent.py`; close the Serial Monitor so it doesn't hold the port.)
 
 ## 3. Calibrate (do this once, it matters)
 
@@ -48,10 +57,18 @@ SOIL_HOT_C    = 30   // soil ≥ 30°C     → water a bit longer
 PH_ALK_ALERT  = 8.0  // pH > 8          → alert "needs treatment"
 ```
 
-## 5. How it reaches the dashboard
+## 5. How it reaches the cloud (via the Pi)
 
-The node publishes JSON to MQTT topic **`agrisense/sensors`** on the VPS broker
-(open port 1883 on the VPS — already done). To show these readings on the web
-dashboard / feed the advisory, a small bridge subscribes to `agrisense/sensors`
-and forwards to the crop-recommendation service — ask and that bridge can be
-added next.
+The ESP sends its JSON readings over **serial to the Raspberry Pi**. `pi_agent.py`
+reads them and forwards to the **crop-recommendation** service in the cloud
+(filling N/P/K/rainfall from config, since those have no sensor). Commands flow
+the other way: the cloud insect AI publishes `agrisense/actuator/cmd`, the Pi
+subscribes and writes the command down the serial link to the ESP.
+
+Wire-up on the Pi:
+```bash
+pip install -r requirements-pi.txt          # includes pyserial
+export ESP_PORT=/dev/ttyUSB0                 # or /dev/ttyACM0 — check `ls /dev/tty*`
+export CLOUD_API=http://72.62.93.99  MQTT_BROKER=72.62.93.99
+python3 pi_agent.py
+```
