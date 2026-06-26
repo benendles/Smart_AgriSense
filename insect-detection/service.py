@@ -19,6 +19,8 @@ MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_model.pth"))
 PORT        = int(os.getenv("PORT", 4004))
 MQTT_BROKER = os.getenv("MQTT_BROKER", "")   # e.g. "192.168.1.x" — leave empty if no Pi yet
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
+PEST_CONF_THRESHOLD = float(os.getenv("PEST_CONF_THRESHOLD", "0.7"))  # spray when pest conf ≥ this
+NO_PEST = {"No Pest Detected", "no pest", "Healthy", "healthy"}
 
 device = torch.device("cuda" if torch.cuda.is_available() else
                     "mps"  if torch.backends.mps.is_available() else "cpu")
@@ -129,13 +131,35 @@ def get_history(limit: int = 50):
     return store.history(limit)
 
 
+def maybe_trigger_pesticide(result: dict) -> None:
+    """If a real pest is detected with high confidence, command the ESP32 over
+    MQTT to spray pesticide (the ESP32 subscribes to agrisense/actuator/cmd)."""
+    pest = result.get("pest", "")
+    conf = float(result.get("confidence", 0) or 0)
+    if not MQTT_BROKER or pest in NO_PEST or conf < PEST_CONF_THRESHOLD:
+        return
+    try:
+        import paho.mqtt.publish as publish
+        publish.single(
+            topic="agrisense/actuator/cmd",
+            payload=json.dumps({"actuator": "pesticide", "seconds": 10,
+                                "reason": f"{pest} detected ({conf:.0%})"}),
+            hostname=MQTT_BROKER, port=MQTT_PORT,
+        )
+        print(f"[pesticide] spray commanded — {pest} ({conf:.2f})")
+    except Exception as e:
+        print(f"[pesticide] command failed: {e}")
+
+
 @app.post("/insect/analyze")
 async def analyze(image: UploadFile = File(...)):
     """
     Raspberry Pi calls this after capturing a photo.
     Accepts: multipart/form-data with field name 'image'
     """
-    return store.save(run_inference(await image.read()))
+    result = store.save(run_inference(await image.read()))
+    maybe_trigger_pesticide(result)
+    return result
 
 
 # ── Capture review flow ───────────────────────────────────────────────────────
@@ -165,6 +189,7 @@ def confirm():
         raise HTTPException(status_code=404, detail="No pending image")
     result = store.save(run_inference(_pending))
     _pending = None
+    maybe_trigger_pesticide(result)
     return result
 
 
