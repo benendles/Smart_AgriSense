@@ -49,6 +49,10 @@ SOIL_P   = float(os.getenv("SOIL_P", "42"))
 SOIL_K   = float(os.getenv("SOIL_K", "43"))
 RAINFALL = float(os.getenv("RAINFALL_MM", "120"))
 
+# ── Decision-engine thresholds (the Pi is the brain) ──────────────────────────
+SOIL_MOIST_THRESHOLD = int(os.getenv("SOIL_MOIST_THRESHOLD", "40"))  # irrigate below this %
+ALERTS_TOPIC = os.getenv("ALERTS_TOPIC", "agrisense/alerts")
+
 # Path-based (ingress) vs port-based (docker-compose) URL builders
 def upload_url(service: str) -> str:
     # Upload the captured image for the farmer to REVIEW (not auto-analyse).
@@ -279,8 +283,73 @@ def relay_to_esp(cmd: dict):
         print(f"[esp] write failed: {e}")
 
 
+# ── The decision engine (all the intelligence lives HERE, not on the ESP) ─────
+def _water_seconds(soil_temp, humidity) -> int:
+    """Irrigation dose: base time from soil temperature, trimmed by air humidity."""
+    t = soil_temp if soil_temp is not None else 25
+    if   t < 20: base = 15
+    elif t < 30: base = 25
+    elif t < 35: base = 40
+    else:        base = 60
+    h = humidity if humidity is not None else 50
+    if   h > 90:  return 0                 # too humid → delay
+    elif h > 70:  base = int(base * 0.6)   # reduce 40%
+    elif h >= 40: base = int(base * 0.8)   # reduce 20%
+    return base                            # h < 40 → full dose
+
+
+def _ph_alert(ph):
+    """Recommendation/alert string for the pH band, or None if pH is fine."""
+    if ph is None: return None
+    if ph < 5.5:   return f"pH {ph:.1f} HIGHLY ACIDIC — apply agricultural lime (no auto-fertilizer)"
+    if ph < 6.5:   return None   # slightly acidic — ideal
+    if ph < 7.5:   return None   # neutral — perfect
+    if ph <= 8.5:  return f"pH {ph:.1f} alkaline — recommend sulfur / acidifying fertilizer"
+    return f"pH {ph:.1f} HIGHLY ALKALINE — corrective treatment needed"
+
+
+def publish_alert(message: str):
+    print(f"[alert] {message}")
+    if not MQTT_BROKER:
+        return
+    try:
+        import paho.mqtt.publish as publish
+        publish.single(ALERTS_TOPIC, hostname=MQTT_BROKER, port=MQTT_PORT,
+                       payload=json.dumps({"message": message,
+                                           "ts": datetime.utcnow().isoformat() + "Z"}))
+    except Exception as e:
+        print(f"[alert] publish failed: {e}")
+
+
+def decide_actions(data: dict):
+    """Runs on every ESP reading: decides irrigation + fertilizer, sends commands
+    back to the ESP, and raises pH alerts. (Pesticide comes from the insect AI.)"""
+    soil  = data.get("soilMoisture")
+    soilT = data.get("soilTemp")
+    hum   = data.get("humidity")
+    ph    = data.get("ph")
+
+    # 1. Irrigation — only when the soil is dry.
+    if soil is not None and soil < SOIL_MOIST_THRESHOLD:
+        secs = _water_seconds(soilT, hum)
+        if secs > 0:
+            relay_to_esp({"actuator": "water", "seconds": secs})
+        else:
+            print("[decide] soil dry but air too humid — irrigation delayed")
+
+    # 2. pH analysis → alert.
+    alert = _ph_alert(ph)
+    if alert:
+        publish_alert(alert)
+
+    # 3. Fertilizer — multi-condition: moist enough, not too hot, and pH says it helps.
+    if (soil is not None and soil > 40 and soilT is not None and soilT < 35
+            and ph is not None and 7.5 < ph <= 8.5):
+        relay_to_esp({"actuator": "fertilizer", "seconds": 8})
+
+
 def esp_serial_loop():
-    """Read the ESP32's sensor JSON lines and forward each to the crop service."""
+    """Read each ESP32 sensor line, forward it to the cloud, and run the engine."""
     while True:
         s = esp_open()
         if s is None:
@@ -305,6 +374,8 @@ def esp_serial_loop():
             print(f"[esp→cloud] {data} -> crop: {r.json().get('recommendedCrop')}")
         except Exception as e:
             print(f"[esp→cloud] push failed: {e}")
+
+        decide_actions(data)   # the brain: irrigation + fertilizer + pH alerts
 
 
 if __name__ == "__main__":
