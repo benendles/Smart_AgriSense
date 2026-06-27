@@ -4,8 +4,8 @@ The ESP32 reads the soil/air sensors, decides **water + fertilizer locally**
 (works even if the Pi/cloud is offline), drives the 3 relays, and is wired to the
 **Raspberry Pi over the USB cable**. It exchanges one-line JSON over the serial
 link — the **Pi is the gateway** to the cloud (no WiFi on the ESP). Pesticide is
-commanded by the cloud insect AI → Pi → ESP. Sketch:
-[`agrisense_node/agrisense_node.ino`](agrisense_node/agrisense_node.ino).
+commanded by the cloud insect AI → Pi → ESP. Firmware (PlatformIO):
+[`src/main.cpp`](src/main.cpp).
 
 ```
 ESP32 ──USB serial──► Raspberry Pi (pi_agent.py gateway) ──HTTP/MQTT──► cloud
@@ -25,21 +25,20 @@ ESP32 ──USB serial──► Raspberry Pi (pi_agent.py gateway) ──HTTP/MQ
 Power sensors from **3V3**; the pump/relay usually needs **5V** + a separate
 supply for the pump itself (don't drive a pump straight from the ESP32).
 
-## 2. Flash it (execution)
+## 2. Flash it (PlatformIO)
 
-1. Install the **Arduino IDE**.
-2. **Add ESP32 boards:** File → Preferences → Additional Boards Manager URLs →
-   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
-   then Tools → Board → Boards Manager → install **esp32**.
-3. **Install libraries** (Tools → Manage Libraries): `DHT sensor library`,
-   `Adafruit Unified Sensor`, `OneWire`, `DallasTemperature`, `ArduinoJson`.
-   (No WiFi/MQTT library — the ESP talks to the Pi over serial.)
-4. No WiFi to configure. Just check the pins/calibration at the top of the sketch.
-5. Tools → Board → **ESP32 Dev Module**; Tools → Port → the port that appeared
-   when you plugged in the ESP32.
-6. Click **Upload** (→). Open **Serial Monitor** at **115200 baud** — you'll see
-   the JSON reading lines. (In production the **Pi** reads that serial port via
-   `pi_agent.py`; close the Serial Monitor so it doesn't hold the port.)
+You have the **PlatformIO** VS Code extension — use that:
+
+1. VS Code → **File → Open Folder** → this `esp32/` folder (it contains `platformio.ini`).
+2. PlatformIO auto-installs the libraries from `platformio.ini` (DHT, Adafruit
+   Unified Sensor, OneWire, DallasTemperature, ArduinoJson) — no manual setup.
+3. Plug in the ESP32, then click the PlatformIO **Upload** (→) in the blue bottom
+   bar (or run `pio run -t upload`).
+4. Click **Serial Monitor** (🔌, or `pio device monitor`) at **115200 baud** to
+   watch the JSON reading lines. In production the **Pi** owns that serial port
+   (via `pi_agent.py`), so close the monitor afterwards — it would hold the port.
+
+No WiFi to configure — the ESP talks only to the Pi over serial.
 
 ## 3. Calibrate (do this once, it matters)
 
@@ -54,7 +53,8 @@ supply for the pump itself (don't drive a pump straight from the ESP32).
 SOIL_WET_PCT  = 45   // soil ≥ 45% wet  → don't water
 AIR_HUMID_PCT = 80   // air ≥ 80% humid → hold (soil absorbs from air)
 SOIL_HOT_C    = 30   // soil ≥ 30°C     → water a bit longer
-PH_ALK_ALERT  = 8.0  // pH > 8          → alert "needs treatment"
+PH_ALK_ALERT  = 8.0  // pH > 8          → dose fertilizer (acidify toward neutral)
+PH_ACID_ALERT = 5.5  // pH < 5.5        → ALERT to add lime (no auto-doser)
 ```
 
 ## 5. How it reaches the cloud (via the Pi)

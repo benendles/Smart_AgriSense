@@ -1,8 +1,8 @@
 /*
  * Smart AgriSense — ESP32 sensor/actuator node (serial-linked to the Raspberry Pi)
  * ================================================================================
- * The ESP32 does NOT talk to WiFi/cloud. It is wired to the Raspberry Pi over the
- * USB cable and they exchange one-line JSON messages over the serial link:
+ * PlatformIO project. The ESP32 is wired to the Raspberry Pi over the USB cable
+ * and they exchange one-line JSON over serial:
  *
  *   ESP32 → Pi  (every cycle):  {"soilMoisture":..,"soilTemp":..,"temperature":..,
  *                                "humidity":..,"ph":..,"phStatus":"..",
@@ -12,17 +12,16 @@
  * The Pi forwards readings to the cloud and relays cloud AI commands (e.g. spray
  * pesticide from the insect model) back down to this node.
  *
- * WATER + FERTILIZER are still decided LOCALLY here (fast, works even if the Pi or
- * cloud is offline). PESTICIDE is command-only (the cloud AI decides, via the Pi).
+ * WATER + FERTILIZER are decided LOCALLY (work even if the Pi/cloud is offline).
+ *   - water:      dry soil + dry air → irrigate
+ *   - fertilizer: pH > 8 → dose to acidify toward neutral (no NPK sensor used)
+ *   - low pH < 5.5 → ALERT only (no lime dispenser)
+ * PESTICIDE is command-only (the cloud insect AI decides, via the Pi).
  *
- * SENSORS / PINS (see esp32/README.md):
- *   soil moisture(analog) GPIO34 · pH(analog) GPIO35 · DS18B20 soil temp GPIO4
- *   DHT22 air temp/humidity GPIO15
- * RELAYS: water GPIO26 · fertilizer GPIO27 · pesticide GPIO25
- *
- * LIBRARIES: DHT + Adafruit Unified Sensor, OneWire, DallasTemperature, ArduinoJson.
- * BOARD: ESP32 Dev Module.  SERIAL: 115200 baud (must match the Pi side).
+ * PINS: soil moisture(analog) GPIO34 · pH(analog) GPIO35 · DS18B20 soil temp GPIO4
+ *       DHT22 air temp/humidity GPIO15 · relays: water 26 · fertilizer 27 · pesticide 25
  */
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <OneWire.h>
@@ -38,10 +37,12 @@ const int   SOIL_RAW_DRY = 3200, SOIL_RAW_WET = 1400;
 const float PH_SLOPE = -5.70, PH_OFFSET = 21.34;
 
 // ── Thresholds + doses (tune to your crop) ────────────────────────────────────
-const int   SOIL_WET_PCT = 45;   // soil ≥ this  => wet enough, don't water
-const float AIR_HUMID_PCT = 80;  // air ≥ this   => humid, hold irrigation
-const float SOIL_HOT_C = 30;     // soil ≥ this  => water a bit longer
-const float PH_ACID_MAX = 7.0, PH_ALK_ALERT = 8.0;  // > 8 => dose fertilizer to acidify
+const int   SOIL_WET_PCT = 45;    // soil ≥ this  => wet enough, don't water
+const float AIR_HUMID_PCT = 80;   // air ≥ this   => humid, hold irrigation
+const float SOIL_HOT_C = 30;      // soil ≥ this  => water a bit longer
+const float PH_ACID_ALERT = 5.5;  // pH < this    => too acidic => ALERT (add lime)
+const float PH_ACID_MAX = 7.0;    // pH < this    => acidic (monitor)
+const float PH_ALK_ALERT = 8.0;   // pH > this    => alkaline => dose fertilizer
 const int   FERT_DOSE_S = 8, PEST_DOSE_S = 10;
 const unsigned long FERT_COOLDOWN_MS = 6UL * 3600000UL;  // ≥6 h between fertilizer doses
 const unsigned long CYCLE_MS = 30000;                     // read + report every 30 s
@@ -68,8 +69,9 @@ float readPh() {
   return constrain(PH_SLOPE * volts + PH_OFFSET, 0.0, 14.0);
 }
 const char* phStatus(float ph) {
-  if (ph > PH_ALK_ALERT) return "alkaline_dosing_fertilizer";
-  if (ph < PH_ACID_MAX)  return "acidic";
+  if (ph > PH_ALK_ALERT)  return "alkaline_dosing_fertilizer";  // > 8 → fertilizer acidifies
+  if (ph < PH_ACID_ALERT) return "acidic_low_ALERT_add_lime";   // < 5.5 → alert (no doser)
+  if (ph < PH_ACID_MAX)   return "acidic";                       // 5.5–7 → monitor
   return "ok";
 }
 int decideIrrigationSeconds(int soilPct, float soilT, float airHum) {
