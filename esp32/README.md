@@ -1,11 +1,11 @@
 # Smart AgriSense — ESP32 Sensor/Actuator Node
 
-The ESP32 reads the soil/air sensors, decides **water + fertilizer locally**
-(works even if the Pi/cloud is offline), drives the 3 relays, and is wired to the
-**Raspberry Pi over the USB cable**. It exchanges one-line JSON over the serial
-link — the **Pi is the gateway** to the cloud (no WiFi on the ESP). Pesticide is
-commanded by the cloud insect AI → Pi → ESP. Firmware (PlatformIO):
-[`src/main.cpp`](src/main.cpp).
+The ESP32 is a **dumb I/O node** — it makes **no decisions**. It reads the
+soil/air sensors, sends them to the **Raspberry Pi** as one JSON line every cycle,
+and drives the 3 relays **only when the Pi commands it**. The **Pi is the decision
+engine + gateway** (irrigation, fertilizer, pH alerts all live in `pi_agent.py`);
+pesticide is commanded by the cloud insect AI → Pi → ESP. Wired to the Pi over the
+**USB cable** (no WiFi on the ESP). Firmware (PlatformIO): [`src/main.cpp`](src/main.cpp).
 
 ```
 ESP32 ──USB serial──► Raspberry Pi (pi_agent.py gateway) ──HTTP/MQTT──► cloud
@@ -47,15 +47,12 @@ No WiFi to configure — the ESP talks only to the Pi over serial.
 - **pH:** dip in **pH 4.0** and **pH 7.0** buffer solutions, note the voltages,
   fit the line, set `PH_SLOPE` / `PH_OFFSET`.
 
-## 4. Decision thresholds (tune to your crop)
+## 4. Decision thresholds live on the Pi, not here
 
-```
-SOIL_WET_PCT  = 45   // soil ≥ 45% wet  → don't water
-AIR_HUMID_PCT = 80   // air ≥ 80% humid → hold (soil absorbs from air)
-SOIL_HOT_C    = 30   // soil ≥ 30°C     → water a bit longer
-PH_ALK_ALERT  = 8.0  // pH > 8          → dose fertilizer (acidify toward neutral)
-PH_ACID_ALERT = 5.5  // pH < 5.5        → ALERT to add lime (no auto-doser)
-```
+The ESP makes no decisions. Irrigation (soil-temp table + humidity adjustment),
+fertilizer (multi-condition), and pH alerts are all in `pi-relay/pi_agent.py`
+(`decide_actions()` / `SOIL_MOIST_THRESHOLD`). Tune your crop there, not in the
+firmware.
 
 ## 5. How it reaches the cloud (via the Pi)
 

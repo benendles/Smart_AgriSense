@@ -96,12 +96,14 @@ void loop() {
   if (isnan(airT))   airT   = 0;
   float ph      = readPh();
 
-  StaticJsonDocument<192> doc;
+  StaticJsonDocument<256> doc;
   doc["soilMoisture"] = soilPct;
   doc["soilTemp"]     = soilT;
   doc["temperature"]  = airT;
   doc["humidity"]     = airHum;
   doc["ph"]           = round(ph * 100) / 100.0;
+  doc["soilRaw"]      = analogRead(PIN_SOIL_MOIST);  // raw 0..4095 — for soil calibration
+  doc["phRaw"]        = analogRead(PIN_PH);          // raw 0..4095 — for pH calibration
   serializeJson(doc, Serial);   // one JSON line UP to the Pi
   Serial.println();
 }
