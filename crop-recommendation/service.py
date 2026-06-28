@@ -22,7 +22,8 @@ print(f"Loading model from {MODEL_PATH} on {device}...")
 model = load_model(MODEL_PATH, device)
 print("Model ready.")
 
-store = Store("crop")   # SQLite-backed history at /data/crop.db
+store        = Store("crop")     # SQLite-backed history at /data/crop.db
+sensor_store = Store("sensors")  # raw ESP32 readings for the dashboard
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="AgriSense Crop Recommendation Service", version="1.0.0")
@@ -45,9 +46,58 @@ class SensorInput(BaseModel):
     rainfall:    float
 
 
+class RawSensorInput(BaseModel):
+    temperature:  float
+    humidity:     float
+    ph:           float
+    soilMoisture: float | None = None
+    soilTemp:     float | None = None
+    online:       bool = True
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "device": str(device), "model": str(MODEL_PATH)}
+
+
+# ── Raw sensor endpoints (consumed by the web dashboard) ─────────────────────
+
+@app.post("/sensors/ingest")
+def ingest_sensors(data: RawSensorInput):
+    return sensor_store.save({
+        "temperature":  data.temperature,
+        "humidity":     data.humidity,
+        "ph":           data.ph,
+        "soilMoisture": data.soilMoisture,
+        "soilTemp":     data.soilTemp,
+        "online":       data.online,
+        "timestamp":    datetime.utcnow().isoformat() + "Z",
+    })
+
+
+@app.get("/sensors/latest")
+def latest_sensors():
+    data = sensor_store.latest()
+    if data is None:
+        raise HTTPException(status_code=404, detail="No sensor data yet")
+    return data
+
+
+@app.get("/sensors/history")
+def sensor_history(hours: int = 24):
+    rows = sensor_store.history(hours * 4)  # up to 4 readings/hour
+    rows = [r for r in rows if r.get("timestamp", "") >= (
+        datetime.utcnow().isoformat()[:13]  # rough hour filter via prefix
+    )[:0] or True]  # include all; let caller filter if needed
+    # Return chart-friendly format matching the web app's HistoryData type
+    rows_asc = list(reversed(rows))
+    return {
+        "labels":       [r["timestamp"][11:16] for r in rows_asc],  # "HH:MM"
+        "temperature":  [r.get("temperature",  0) for r in rows_asc],
+        "humidity":     [r.get("humidity",     0) for r in rows_asc],
+        "soilMoisture": [r.get("soilMoisture", 0) for r in rows_asc],
+        "ph":           [r.get("ph",           0) for r in rows_asc],
+    }
 
 
 @app.get("/recommendation/latest")

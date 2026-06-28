@@ -30,7 +30,7 @@ import requests
 
 # ── Configuration (override via environment) ──────────────────────────────────
 CLOUD_API   = os.getenv("CLOUD_API", "http://localhost")   # https://api.your-domain.com on real deploy
-PORTS       = {"plant": 4003, "insect": 4004, "disease": 4005, "crop": 4006}
+PORTS       = {"plant": 30003, "insect": 30004, "disease": 30005, "crop": 30006}
 USE_INGRESS = os.getenv("USE_INGRESS", "false").lower() == "true"  # true => path-based, no ports
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")        # <VPS_PUBLIC_IP> on real deploy
@@ -239,6 +239,7 @@ def mqtt_loop():
         client = mqtt.Client()                                  # paho-mqtt 1.x
     client.on_connect = _on_connect
     client.on_message = _on_message
+    client._connect_timeout = 10  # fail fast so ESP serial loop isn't starved
     while True:
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
@@ -330,17 +331,24 @@ def decide_actions(data: dict):
     ph    = data.get("ph")
 
     # 1. Irrigation — only when the soil is dry.
-    if soil is not None and soil < SOIL_MOIST_THRESHOLD:
+    # Guard: soilMoisture==0 means probe disconnected (real soil is never bone-dry at 0).
+    if soil is not None and soil > 0 and soil < SOIL_MOIST_THRESHOLD:
         secs = _water_seconds(soilT, hum)
         if secs > 0:
             relay_to_esp({"actuator": "water", "seconds": secs})
         else:
             print("[decide] soil dry but air too humid — irrigation delayed")
+    elif soil == 0:
+        print("[decide] soilMoisture=0 — probe disconnected, skipping irrigation")
 
     # 2. pH analysis → alert.
-    alert = _ph_alert(ph)
-    if alert:
-        publish_alert(alert)
+    # Guard: pH==14 means probe disconnected (pegged at ADC max).
+    if ph is not None and ph < 14:
+        alert = _ph_alert(ph)
+        if alert:
+            publish_alert(alert)
+    elif ph == 14:
+        print("[decide] pH=14 — probe disconnected, skipping pH alert")
 
     # 3. Fertilizer — multi-condition: moist enough, not too hot, and pH says it helps.
     if (soil is not None and soil > 40 and soilT is not None and soilT < 35
@@ -374,6 +382,22 @@ def esp_serial_loop():
             print(f"[esp→cloud] {data} -> crop: {r.json().get('recommendedCrop')}")
         except Exception as e:
             print(f"[esp→cloud] push failed: {e}")
+
+        # Push raw readings so the web dashboard can display live sensor data.
+        try:
+            sensor_payload = {
+                "temperature":  float(data.get("temperature", 0) or 0),
+                "humidity":     float(data.get("humidity", 0) or 0),
+                "ph":           float(data.get("ph", 0) or 0),
+                "soilMoisture": float(data.get("soilMoisture", 0) or 0),
+                "soilTemp":     float(data.get("soilTemp", 0) or 0),
+                "online":       True,
+            }
+            requests.post(f"{CLOUD_API}:30006/sensors/ingest",
+                          json=sensor_payload, timeout=10)
+            print("[sensors] pushed to dashboard")
+        except Exception as e:
+            print(f"[sensors] dashboard push failed: {e}")
 
         decide_actions(data)   # the brain: irrigation + fertilizer + pH alerts
 
