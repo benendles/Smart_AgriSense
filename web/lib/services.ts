@@ -41,13 +41,14 @@ const ALLOW_MOCKS = process.env.ALLOW_MOCKS === "true";
 
 // ── Sensors (maps to: Ingestion Service → sensor readings) ───────────────────
 
-const SENSOR_BASE = { temperature: 28.4, humidity: 74.2, soilMoisture: 52.1, ph: 6.3 };
+const SENSOR_BASE = { temperature: 28.4, humidity: 74.2, soilMoisture: 52.1, soilTemp: 24.5, ph: 6.3 };
 
 function mockSensors(): SensorData {
   return {
     temperature: drift(SENSOR_BASE.temperature, 1.5),
     humidity: drift(SENSOR_BASE.humidity, 3),
     soilMoisture: drift(SENSOR_BASE.soilMoisture, 4),
+    soilTemp: drift(SENSOR_BASE.soilTemp, 1),
     ph: drift(SENSOR_BASE.ph, 0.2),
     timestamp: new Date().toISOString(),
     online: true,

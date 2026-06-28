@@ -12,6 +12,7 @@ interface SensorCardProps {
   status: StatusLevel;
   lastSync: string | null;
   loading?: boolean;
+  precision?: number;
 }
 
 const STATUS_CONFIG: Record<StatusLevel, { label: string; classes: string; dot: string }> = {
@@ -49,8 +50,10 @@ export default function SensorCard({
   status,
   lastSync,
   loading = false,
+  precision = 1,
 }: SensorCardProps) {
   const cfg = STATUS_CONFIG[status];
+  const display = value === null ? null : value.toFixed(precision);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-3">
@@ -76,7 +79,7 @@ export default function SensorCard({
           <div className="h-9 w-20 bg-gray-100 rounded animate-pulse" />
         ) : (
           <>
-            <span className="text-3xl font-bold text-gray-900 leading-none">{value}</span>
+            <span className="text-3xl font-bold text-gray-900 leading-none">{display}</span>
             <span className="text-sm text-gray-500 mb-0.5">{unit}</span>
           </>
         )}

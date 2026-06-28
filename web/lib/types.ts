@@ -3,6 +3,7 @@ export interface SensorData {
   temperature: number;
   humidity: number;
   soilMoisture: number;
+  soilTemp: number;
   ph: number;
   timestamp: string;
   online: boolean;

@@ -36,6 +36,11 @@ function phStatus(v: number) {
   if (v < 5.5 || v > 7.5) return "warning" as const;
   return "ok" as const;
 }
+function soilTempStatus(v: number) {
+  if (v > 35 || v < 10) return "critical" as const;
+  if (v > 32 || v < 15) return "warning" as const;
+  return "ok" as const;
+}
 
 export default function DashboardPage() {
   const [sensors, setSensors] = useState<SensorData | null>(null);
@@ -172,11 +177,12 @@ export default function DashboardPage() {
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
           Live Sensor Readings
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           <SensorCard
-            label="Temperature"
+            label="Air Temp"
             value={sensors?.temperature ?? null}
             unit="°C"
+            precision={1}
             icon={Thermometer}
             status={sensors ? tempStatus(sensors.temperature) : "ok"}
             lastSync={sensors?.timestamp ?? null}
@@ -186,6 +192,7 @@ export default function DashboardPage() {
             label="Humidity"
             value={sensors?.humidity ?? null}
             unit="%"
+            precision={1}
             icon={Droplets}
             status={sensors ? humidStatus(sensors.humidity) : "ok"}
             lastSync={sensors?.timestamp ?? null}
@@ -195,8 +202,19 @@ export default function DashboardPage() {
             label="Soil Moisture"
             value={sensors?.soilMoisture ?? null}
             unit="%"
+            precision={0}
             icon={CloudRain}
             status={sensors ? moistureStatus(sensors.soilMoisture) : "ok"}
+            lastSync={sensors?.timestamp ?? null}
+            loading={sensorsLoading}
+          />
+          <SensorCard
+            label="Soil Temp"
+            value={sensors?.soilTemp ?? null}
+            unit="°C"
+            precision={1}
+            icon={Thermometer}
+            status={sensors ? soilTempStatus(sensors.soilTemp) : "ok"}
             lastSync={sensors?.timestamp ?? null}
             loading={sensorsLoading}
           />
@@ -204,6 +222,7 @@ export default function DashboardPage() {
             label="Soil pH"
             value={sensors?.ph ?? null}
             unit="pH"
+            precision={2}
             icon={FlaskConical}
             status={sensors ? phStatus(sensors.ph) : "ok"}
             lastSync={sensors?.timestamp ?? null}
