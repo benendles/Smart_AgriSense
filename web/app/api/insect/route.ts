@@ -1,3 +1,6 @@
+// Live data — never statically cache this handler.
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { getInsectDetection, triggerInsectCapture } from "@/lib/services";
 

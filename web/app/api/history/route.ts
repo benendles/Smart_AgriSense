@@ -1,3 +1,6 @@
+// Live data — never statically cache this handler.
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { getHistory } from "@/lib/services";
 import type { HistoryData } from "@/lib/types";
