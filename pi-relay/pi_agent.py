@@ -263,8 +263,17 @@ def esp_open():
         return _esp
     try:
         import serial  # pyserial
-        _esp = serial.Serial(ESP_PORT, ESP_BAUD, timeout=2)
-        print(f"[esp] opened {ESP_PORT} @ {ESP_BAUD}")
+        # Open without toggling DTR/RTS — prevents the CP2102 auto-reset circuit
+        # from putting the ESP32 into bootloader mode on every port open.
+        _esp = serial.Serial()
+        _esp.port    = ESP_PORT
+        _esp.baudrate = ESP_BAUD
+        _esp.timeout = 2
+        _esp.dtr = False
+        _esp.rts = False
+        _esp.open()
+        _esp.reset_input_buffer()
+        print(f"[esp] opened {ESP_PORT} @ {ESP_BAUD} (no reset)")
     except Exception as e:
         print(f"[esp] cannot open {ESP_PORT}: {e}")
         _esp = None
