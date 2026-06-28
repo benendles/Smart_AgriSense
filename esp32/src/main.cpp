@@ -23,7 +23,7 @@
 // ── Pins ──────────────────────────────────────────────────────────────────────
 const int PIN_SOIL_MOIST = 34, PIN_PH = 35, PIN_DS18B20 = 4, PIN_DHT = 15;
 const int PIN_WATER = 26, PIN_FERTILIZER = 27, PIN_PESTICIDE = 25;
-const bool RELAY_ACTIVE_HIGH = true;   // flip to false if your relay board is active-LOW
+const bool RELAY_ACTIVE_HIGH = false;  // most relay boards are active-LOW (LOW = ON)
 
 // ── Calibration (measure for YOUR probes — see README §3) ─────────────────────
 const int   SOIL_RAW_DRY = 3200, SOIL_RAW_WET = 1400;
