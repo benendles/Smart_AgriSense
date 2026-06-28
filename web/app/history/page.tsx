@@ -5,13 +5,14 @@ import { LineChart as LineChartIcon, RefreshCw } from "lucide-react";
 import SensorChart from "@/components/SensorChart";
 import type { HistoryData } from "@/lib/types";
 
-type LineKey = "temperature" | "humidity" | "soilMoisture" | "ph";
+type LineKey = "temperature" | "humidity" | "soilMoisture" | "soilTemp" | "ph";
 
-const LINE_TOGGLES: { key: LineKey; label: string; color: string }[] = [
-  { key: "temperature", label: "Temperature (°C)", color: "bg-red-400" },
-  { key: "humidity", label: "Humidity (%)", color: "bg-blue-400" },
-  { key: "soilMoisture", label: "Soil Moisture (%)", color: "bg-purple-400" },
-  { key: "ph", label: "pH", color: "bg-amber-400" },
+const LINE_TOGGLES: { key: LineKey; label: string; color: string; precision: number }[] = [
+  { key: "temperature", label: "Air Temp (°C)", color: "bg-red-400", precision: 1 },
+  { key: "humidity", label: "Humidity (%)", color: "bg-blue-400", precision: 1 },
+  { key: "soilMoisture", label: "Soil Moisture (%)", color: "bg-purple-400", precision: 0 },
+  { key: "soilTemp", label: "Soil Temp (°C)", color: "bg-orange-400", precision: 1 },
+  { key: "ph", label: "pH", color: "bg-amber-400", precision: 2 },
 ];
 
 export default function HistoryPage() {
@@ -22,6 +23,7 @@ export default function HistoryPage() {
     temperature: true,
     humidity: true,
     soilMoisture: true,
+    soilTemp: true,
     ph: true,
   });
 
@@ -99,13 +101,15 @@ export default function HistoryPage() {
 
       {/* Individual sensor summaries */}
       {!loading && data && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {LINE_TOGGLES.map(({ key, label, color }) => {
-            const values = data[key];
-            const latest = values[values.length - 1];
-            const min = Math.min(...values);
-            const max = Math.max(...values);
-            const avg = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10;
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {LINE_TOGGLES.map(({ key, label, color, precision }) => {
+            const values = data[key] ?? [];
+            const has = values.length > 0;
+            const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(precision));
+            const latest = has ? values[values.length - 1] : null;
+            const min = has ? Math.min(...values) : null;
+            const max = has ? Math.max(...values) : null;
+            const avg = has ? values.reduce((s, v) => s + v, 0) / values.length : null;
 
             return (
               <div key={key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
@@ -113,19 +117,19 @@ export default function HistoryPage() {
                   <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
                   <span className="text-xs font-medium text-gray-500">{label}</span>
                 </div>
-                <p className="text-2xl font-bold text-gray-900 mb-2">{latest}</p>
+                <p className="text-2xl font-bold text-gray-900 mb-2">{fmt(latest)}</p>
                 <div className="space-y-0.5 text-xs text-gray-500">
                   <div className="flex justify-between">
                     <span>Min</span>
-                    <span className="font-medium text-gray-700">{min}</span>
+                    <span className="font-medium text-gray-700">{fmt(min)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Max</span>
-                    <span className="font-medium text-gray-700">{max}</span>
+                    <span className="font-medium text-gray-700">{fmt(max)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Avg</span>
-                    <span className="font-medium text-gray-700">{avg}</span>
+                    <span className="font-medium text-gray-700">{fmt(avg)}</span>
                   </div>
                 </div>
               </div>

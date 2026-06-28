@@ -19,14 +19,16 @@ interface SensorChartProps {
     temperature: boolean;
     humidity: boolean;
     soilMoisture: boolean;
+    soilTemp: boolean;
     ph: boolean;
   };
 }
 
 const LINE_CONFIG = [
-  { key: "temperature", label: "Temperature (°C)", color: "#ef4444" },
+  { key: "temperature", label: "Air Temp (°C)", color: "#ef4444" },
   { key: "humidity", label: "Humidity (%)", color: "#3b82f6" },
   { key: "soilMoisture", label: "Soil Moisture (%)", color: "#8b5cf6" },
+  { key: "soilTemp", label: "Soil Temp (°C)", color: "#f97316" },
   { key: "ph", label: "pH", color: "#f59e0b" },
 ] as const;
 
@@ -36,6 +38,7 @@ const DEFAULT_VISIBLE: Record<LineKey, boolean> = {
   temperature: true,
   humidity: true,
   soilMoisture: true,
+  soilTemp: true,
   ph: true,
 };
 
@@ -58,6 +61,7 @@ export default function SensorChart({
     temperature: data.temperature[i],
     humidity: data.humidity[i],
     soilMoisture: data.soilMoisture[i],
+    soilTemp: data.soilTemp?.[i],
     ph: data.ph[i],
   }));
 

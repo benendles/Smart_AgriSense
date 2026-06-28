@@ -96,6 +96,7 @@ def sensor_history(hours: int = 24):
         "temperature":  [r.get("temperature",  0) for r in rows_asc],
         "humidity":     [r.get("humidity",     0) for r in rows_asc],
         "soilMoisture": [r.get("soilMoisture", 0) for r in rows_asc],
+        "soilTemp":     [r.get("soilTemp",     0) for r in rows_asc],
         "ph":           [r.get("ph",           0) for r in rows_asc],
     }
 

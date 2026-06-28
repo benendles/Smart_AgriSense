@@ -58,6 +58,7 @@ export interface HistoryData {
   temperature: number[];
   humidity: number[];
   soilMoisture: number[];
+  soilTemp: number[];
   ph: number[];
 }
 

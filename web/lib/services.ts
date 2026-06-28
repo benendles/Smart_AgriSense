@@ -420,22 +420,25 @@ function mockHistory(): HistoryData {
   const temperature: number[] = [];
   const humidity: number[] = [];
   const soilMoisture: number[] = [];
+  const soilTemp: number[] = [];
   const ph: number[] = [];
 
-  let t = 27, h = 75, sm = 52, p = 6.3;
+  let t = 27, h = 75, sm = 52, st = 24.5, p = 6.3;
   for (let i = 23; i >= 0; i--) {
     const d = new Date(Date.now() - i * 60 * 60 * 1000);
     labels.push(d.getHours().toString().padStart(2, "0") + ":00");
     t  = Math.round((t  + (Math.random() - 0.5) * 1.5) * 10) / 10;
     h  = Math.round((h  + (Math.random() - 0.5) * 4)   * 10) / 10;
     sm = Math.round((sm + (Math.random() - 0.5) * 5)   * 10) / 10;
+    st = Math.round((st + (Math.random() - 0.5) * 1)   * 10) / 10;
     p  = Math.round((p  + (Math.random() - 0.5) * 0.15) * 100) / 100;
     temperature.push(Math.min(40, Math.max(20, t)));
     humidity.push(Math.min(99, Math.max(40, h)));
     soilMoisture.push(Math.min(100, Math.max(10, sm)));
+    soilTemp.push(Math.min(35, Math.max(15, st)));
     ph.push(Math.min(8, Math.max(5, p)));
   }
-  return { labels, temperature, humidity, soilMoisture, ph };
+  return { labels, temperature, humidity, soilMoisture, soilTemp, ph };
 }
 
 export async function getHistory(): Promise<HistoryData> {
