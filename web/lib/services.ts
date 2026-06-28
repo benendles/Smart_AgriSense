@@ -118,11 +118,34 @@ function mockRecommendation(): RecommendationData {
   };
 }
 
+// The crop service returns { recommendedCrop, confidence, topCrops:[{crop,confidence}], ... },
+// which is NOT the dashboard's RecommendationData shape — adapt it here.
+interface RawRecommendation {
+  recommendedCrop: string;
+  confidence: number;
+  topCrops?: { crop: string; confidence: number }[];
+  timestamp?: string;
+}
+
 export async function getRecommendation(): Promise<RecommendationData | null> {
   const url = process.env.RECOMMENDATION_SERVICE_URL;
   if (url) {
-    const data = await fetchService<RecommendationData>(`${url}/recommendation/latest`);
-    if (data) return data;
+    const raw = await fetchService<RawRecommendation>(`${url}/recommendation/latest`);
+    if (raw && raw.recommendedCrop) {
+      const alternatives = (raw.topCrops ?? [])
+        .map((c) => c.crop)
+        .filter((c) => c !== raw.recommendedCrop);
+      return {
+        crop: raw.recommendedCrop,
+        confidence: raw.confidence ?? 0,
+        reason:
+          "Best match for the current soil and climate readings" +
+          (alternatives.length ? `; alternatives: ${alternatives.join(", ")}` : "") +
+          ".",
+        alternatives,
+        timestamp: raw.timestamp ?? new Date().toISOString(),
+      };
+    }
   }
   return ALLOW_MOCKS ? mockRecommendation() : null;
 }

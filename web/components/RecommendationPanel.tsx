@@ -64,7 +64,7 @@ export default function RecommendationPanel({ data, loading = false }: Recommend
           <div>
             <p className="text-xs text-gray-500 font-medium mb-1.5">Alternative crops:</p>
             <div className="flex flex-wrap gap-2">
-              {data.alternatives.map((alt) => (
+              {(data.alternatives ?? []).map((alt) => (
                 <span
                   key={alt}
                   className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600"
