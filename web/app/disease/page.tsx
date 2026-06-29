@@ -15,7 +15,8 @@ export default function DiseaseDetectionPage() {
     try {
       const res = await fetch("/api/disease");
       if (!res.ok) return;
-      const data: DiseaseData = await res.json();
+      const data: DiseaseData | null = await res.json();
+      if (!data) return; // no detection yet — API returns JSON null
       setLatest((prev) => {
         if (!prev || data.timestamp !== prev.timestamp) {
           setHistory((h) => [data, ...h].slice(0, 10));

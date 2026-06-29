@@ -29,7 +29,8 @@ export default function PlantDetectionPage() {
     try {
       const res = await fetch("/api/plant");
       if (!res.ok) return;
-      const data: PlantDetectionData = await res.json();
+      const data: PlantDetectionData | null = await res.json();
+      if (!data) return; // no detection yet — API returns JSON null
       setLatest((prev) => {
         if (!prev || data.timestamp !== prev.timestamp) {
           setHistory((h) => [data, ...h].slice(0, 10));

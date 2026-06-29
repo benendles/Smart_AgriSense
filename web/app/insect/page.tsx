@@ -22,7 +22,8 @@ export default function InsectDetectionPage() {
     try {
       const res = await fetch("/api/insect");
       if (!res.ok) return;
-      const data: InsectDetectionData = await res.json();
+      const data: InsectDetectionData | null = await res.json();
+      if (!data) return; // no detection yet — API returns JSON null
       setLatest((prev) => {
         if (!prev || data.timestamp !== prev.timestamp) {
           setHistory((h) => [data, ...h].slice(0, 10));

@@ -255,7 +255,9 @@ export async function getPlantDetection(): Promise<PlantDetectionData | null> {
   const url = process.env.PLANT_DETECTION_SERVICE_URL;
   if (url) {
     const data = await fetchService<PlantDetectionData>(`${url}/plant/latest`);
-    if (data) return data;
+    // The plant model identifies crop + growth stage but not health, so the
+    // service omits healthStatus — default it so the UI can't crash on it.
+    if (data) return { ...data, healthStatus: data.healthStatus ?? "healthy", variety: data.variety ?? null };
   }
   return ALLOW_MOCKS ? mockPlantDetection() : null;
 }
