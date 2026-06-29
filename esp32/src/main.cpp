@@ -55,15 +55,27 @@ float readPh() {
   return constrain(PH_SLOPE * volts + PH_OFFSET, 0.0, 14.0);
 }
 
+// Map an actuator name to its relay pin (-1 if unknown).
+int relayPinFor(const char* act) {
+  if (!strcmp(act, "water"))      return PIN_WATER;
+  if (!strcmp(act, "fertilizer")) return PIN_FERTILIZER;
+  if (!strcmp(act, "pesticide"))  return PIN_PESTICIDE;
+  return -1;
+}
+
 // Execute a command line coming DOWN from the Pi. No decisions here — just act.
+//   {"actuator":"water","state":"on"|"off"} -> hold the relay (manual override from dashboard)
+//   {"actuator":"water","seconds":N}        -> timed dose (decision engine / pesticide)
 void handlePiCommand(const String& line) {
   StaticJsonDocument<160> cmd;
   if (deserializeJson(cmd, line)) return;            // ignore non-JSON lines
-  const char* act = cmd["actuator"] | "";
-  int secs = cmd["seconds"] | DEFAULT_DOSE_S;
-  if      (!strcmp(act, "water"))      doseRelay(PIN_WATER,      secs);
-  else if (!strcmp(act, "fertilizer")) doseRelay(PIN_FERTILIZER, secs);
-  else if (!strcmp(act, "pesticide"))  doseRelay(PIN_PESTICIDE,  secs);
+  int pin = relayPinFor(cmd["actuator"] | "");
+  if (pin < 0) return;
+  if (cmd.containsKey("state")) {
+    relayWrite(pin, !strcmp(cmd["state"] | "", "on"));   // persistent ON/OFF
+  } else {
+    doseRelay(pin, cmd["seconds"] | DEFAULT_DOSE_S);     // timed dose
+  }
 }
 
 void setup() {

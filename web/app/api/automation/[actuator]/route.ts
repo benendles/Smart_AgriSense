@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ActuatorName, ActuatorState, AutomationUpdateBody } from "@/lib/types";
 import { automationState } from "@/lib/automationStore";
+import { publishActuatorState } from "@/lib/mqtt";
+
+export const dynamic = "force-dynamic";
 
 const VALID_ACTUATORS: ActuatorName[] = ["irrigation", "fertiliser", "pesticide"];
 
@@ -30,7 +33,18 @@ export async function POST(
     );
   }
 
-  // Mutate the shared in-memory state
+  // Drive the real pump: publish the ON/OFF command to the broker → Pi → ESP32.
+  // If the broker/Pi is unreachable, report it instead of pretending it worked.
+  try {
+    await publishActuatorState(actuator, active);
+  } catch (e) {
+    return NextResponse.json(
+      { error: `pump command failed (broker/Pi unreachable): ${(e as Error).message}` },
+      { status: 502 }
+    );
+  }
+
+  // Only record the new state once the command was actually published.
   automationState[actuator] = {
     active,
     mode,

@@ -23,6 +23,8 @@ spec:
             - { name: AGRICULTURE_SERVICE_URL,      value: "http://advisory:8000" }
             # Raw ESP32 sensor readings for the dashboard (same crop-recommendation pod).
             - { name: SENSOR_SERVICE_URL,           value: "http://crop-recommendation:8000" }
+            # Manual pump commands are published here → Pi (pi_agent) → ESP32 relays.
+            - { name: MQTT_URL,                     value: "mqtt://mosquitto:1883" }
           readinessProbe:
             httpGet: { path: /, port: 3000 }
             initialDelaySeconds: 10
