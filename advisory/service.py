@@ -159,23 +159,31 @@ def health():
 
 
 @app.get("/agriculture/advice")
-def agriculture_advice():
-    """Aggregate the four services + sensors and return Claude-generated farm
-    instructions in the dashboard's AgricultureData shape. Cached by data-hash so
-    repeated polls don't each trigger a Claude call."""
+def agriculture_advice(generate: bool = False):
+    """Return Claude-generated farm instructions in the dashboard's AgricultureData
+    shape. ON-DEMAND to protect API credits:
+      - generate=false (default): return the LAST advisory, NO Claude call.
+      - generate=true (the dashboard's Generate button): spend one Claude call.
+    """
     if not API_KEY:
         # No key → 503 so the web app falls back to its built-in mock advice.
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
+    # Default path: serve the last advisory without ever calling Claude.
+    if not generate:
+        if _cache["data"] is not None:
+            return _cache["data"]
+        last = store.latest()
+        if last is not None:
+            return last
+        raise HTTPException(status_code=404, detail="No advisory generated yet — press Generate")
+
+    # generate=true → the user explicitly requested a fresh advisory.
     sources = gather()
     if all(v is None for v in sources.values()):
         raise HTTPException(status_code=503, detail="No model results yet")
 
     digest = hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest()
-    fresh  = (time.time() - _cache["at"]) < TTL
-    if _cache["data"] is not None and _cache["hash"] == digest and fresh:
-        return _cache["data"]
-
     try:
         data = advise(sources)
     except Exception as e:

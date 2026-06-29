@@ -61,21 +61,24 @@ function InstructionCard({ inst }: { inst: FarmingInstruction }) {
 export default function AgriculturePage() {
   const [data, setData] = useState<AgricultureData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
-  const fetchAdvice = useCallback(async () => {
+  // generate=false → load the LAST advisory (no Claude call, free).
+  // generate=true  → the user pressed Generate → spend one Claude call.
+  const fetchAdvice = useCallback(async (generate = false) => {
+    if (generate) setGenerating(true);
     try {
-      const res = await fetch("/api/agriculture");
+      const res = await fetch(`/api/agriculture${generate ? "?generate=true" : ""}`);
       if (!res.ok) return;
       setData(await res.json());
     } finally {
       setLoading(false);
+      setGenerating(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAdvice();
-    const id = setInterval(fetchAdvice, 30_000);
-    return () => clearInterval(id);
+    fetchAdvice();   // on load: show the last advisory only — never auto-generates
   }, [fetchAdvice]);
 
   const statusCfg = data ? STATUS_CONFIG[data.overallStatus] : null;
@@ -97,9 +100,13 @@ export default function AgriculturePage() {
             AI-generated farm instructions based on sensors, disease, pest &amp; plant detection
           </p>
         </div>
-        <button onClick={fetchAdvice} className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          <RefreshCw className="w-4 h-4 text-gray-500" />
-          Refresh
+        <button
+          onClick={() => fetchAdvice(true)}
+          disabled={generating}
+          className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-60"
+        >
+          <RefreshCw className={`w-4 h-4 ${generating ? "animate-spin" : ""}`} />
+          {generating ? "Generating…" : "Generate Advice"}
         </button>
       </div>
 
@@ -169,11 +176,21 @@ export default function AgriculturePage() {
           )}
 
           <p className="text-xs text-gray-400 text-right">
-            Last updated: {new Date(data.timestamp).toLocaleTimeString()} · Auto-refreshes every 30s
+            Last updated: {new Date(data.timestamp).toLocaleTimeString()} · Generated on demand — press Generate to refresh
           </p>
         </>
       ) : (
-        <p className="text-sm text-gray-400 text-center py-12">No data available</p>
+        <div className="text-center py-12">
+          <p className="text-sm text-gray-400 mb-3">No advisory generated yet.</p>
+          <button
+            onClick={() => fetchAdvice(true)}
+            disabled={generating}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${generating ? "animate-spin" : ""}`} />
+            {generating ? "Generating…" : "Generate Advice"}
+          </button>
+        </div>
       )}
     </div>
   );

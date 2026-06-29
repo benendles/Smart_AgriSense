@@ -323,10 +323,11 @@ function mockAgricultureAdvice(): AgricultureData {
   };
 }
 
-export async function getAgricultureAdvice(): Promise<AgricultureData | null> {
+export async function getAgricultureAdvice(generate = false): Promise<AgricultureData | null> {
   const url = process.env.AGRICULTURE_SERVICE_URL;
   if (url) {
-    const data = await fetchService<AgricultureData>(`${url}/agriculture/advice`);
+    const q = generate ? "?generate=true" : "";
+    const data = await fetchService<AgricultureData>(`${url}/agriculture/advice${q}`);
     if (data) return data;
   }
   return ALLOW_MOCKS ? mockAgricultureAdvice() : null;
