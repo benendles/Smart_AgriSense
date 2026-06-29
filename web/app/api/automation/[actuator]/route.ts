@@ -33,10 +33,14 @@ export async function POST(
     );
   }
 
+  // Relay is held ON only in MANUAL + active. Switching to AUTO releases the
+  // manual hold (off) so the Pi decision engine can drive it on its own.
+  const relayOn = mode === "manual" && active;
+
   // Drive the real pump: publish the ON/OFF command to the broker → Pi → ESP32.
   // If the broker/Pi is unreachable, report it instead of pretending it worked.
   try {
-    await publishActuatorState(actuator, active);
+    await publishActuatorState(actuator, relayOn);
   } catch (e) {
     return NextResponse.json(
       { error: `pump command failed (broker/Pi unreachable): ${(e as Error).message}` },
@@ -46,9 +50,9 @@ export async function POST(
 
   // Only record the new state once the command was actually published.
   automationState[actuator] = {
-    active,
+    active: relayOn,
     mode,
-    lastTriggered: active
+    lastTriggered: relayOn
       ? new Date().toISOString()
       : automationState[actuator].lastTriggered,
   };

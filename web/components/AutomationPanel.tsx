@@ -47,28 +47,28 @@ function formatTime(ts: string | null | undefined): string {
 }
 
 export default function AutomationPanel({ data, loading = false, onUpdate }: AutomationPanelProps) {
-  const [toggling, setToggling] = useState<ActuatorName | null>(null);
+  const [busy, setBusy] = useState<ActuatorName | null>(null);
 
-  async function handleToggle(actuator: ActuatorName) {
+  async function setActuator(
+    actuator: ActuatorName,
+    active: boolean,
+    mode: "auto" | "manual"
+  ) {
     if (!data) return;
-    const current = data[actuator];
-    setToggling(actuator);
+    setBusy(actuator);
     try {
       const res = await fetch(`/api/automation/${actuator}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          active: !current.active,
-          mode: "manual",
-        }),
+        body: JSON.stringify({ active, mode }),
       });
       if (!res.ok) throw new Error("Failed to update");
       const updated = await res.json();
       onUpdate({ ...data, [actuator]: updated });
     } catch (err) {
-      console.error("Automation toggle error:", err);
+      console.error("Automation error:", err);
     } finally {
-      setToggling(null);
+      setBusy(null);
     }
   }
 
@@ -87,7 +87,8 @@ export default function AutomationPanel({ data, loading = false, onUpdate }: Aut
           {(Object.keys(ACTUATOR_CONFIG) as ActuatorName[]).map((key) => {
             const cfg = ACTUATOR_CONFIG[key];
             const state = data[key];
-            const isToggling = toggling === key;
+            const isBusy = busy === key;
+            const isManual = state.mode === "manual";
             const Icon = cfg.icon;
 
             return (
@@ -99,56 +100,82 @@ export default function AutomationPanel({ data, loading = false, onUpdate }: Aut
                     : "border-gray-200 bg-gray-50"
                 }`}
               >
-                {/* Icon + Label */}
+                {/* Icon + Label + busy spinner */}
                 <div className="flex items-center gap-2">
-                  <Icon
-                    className={`w-5 h-5 ${
-                      state.active ? "text-primary-600" : "text-gray-400"
-                    }`}
-                  />
+                  <Icon className={`w-5 h-5 ${state.active ? "text-primary-600" : "text-gray-400"}`} />
                   <span className="text-sm font-semibold text-gray-700">{cfg.label}</span>
+                  {isBusy && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 ml-auto" />}
                 </div>
 
                 {/* Status badge */}
                 <div className="flex items-center justify-between">
                   <span
                     className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                      state.active
-                        ? "bg-primary-100 text-primary-700"
-                        : "bg-gray-200 text-gray-500"
+                      state.active ? "bg-primary-100 text-primary-700" : "bg-gray-200 text-gray-500"
                     }`}
                   >
                     {state.active ? "ON" : "OFF"}
                   </span>
-                  <span className="text-xs text-gray-500 capitalize">{state.mode} mode</span>
+                  <span className="text-xs text-gray-400">Last: {formatTime(state.lastTriggered)}</span>
                 </div>
 
-                {/* Last triggered */}
-                <p className="text-xs text-gray-400">
-                  Last: {formatTime(state.lastTriggered)}
-                </p>
+                {/* Mode switch: Auto vs Manual */}
+                <div className="flex rounded-lg bg-gray-100 p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActuator(key, state.active, "auto")}
+                    disabled={isBusy}
+                    className={`flex-1 py-1.5 rounded-md transition-colors ${
+                      !isManual ? "bg-white shadow-sm text-primary-700" : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActuator(key, state.active, "manual")}
+                    disabled={isBusy}
+                    className={`flex-1 py-1.5 rounded-md transition-colors ${
+                      isManual ? "bg-white shadow-sm text-primary-700" : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    Manual
+                  </button>
+                </div>
 
-                {/* Toggle button */}
-                <button
-                  onClick={() => handleToggle(key)}
-                  disabled={isToggling}
-                  className={`w-full py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                    state.active
-                      ? "bg-red-100 text-red-700 hover:bg-red-200"
-                      : "bg-primary-600 text-white hover:bg-primary-700"
-                  } disabled:opacity-60`}
-                >
-                  {isToggling ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Updating…
-                    </>
-                  ) : state.active ? (
-                    "Turn OFF (Manual)"
-                  ) : (
-                    "Turn ON (Manual)"
-                  )}
-                </button>
+                {/* Manual ON/OFF, or an "automatic" note in auto mode */}
+                {isManual ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActuator(key, true, "manual")}
+                      disabled={isBusy}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
+                        state.active
+                          ? "bg-primary-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      Turn ON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActuator(key, false, "manual")}
+                      disabled={isBusy}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
+                        !state.active
+                          ? "bg-red-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      Turn OFF
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 text-center py-2 bg-gray-100 rounded-lg">
+                    Controlled automatically by the decision engine
+                  </p>
+                )}
               </div>
             );
           })}
