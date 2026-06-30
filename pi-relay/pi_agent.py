@@ -111,11 +111,11 @@ class Hardware:
         released the device — makes the 2nd capture (retake) fail with no image.
         So we hold one warm instance and just capture from it each time."""
         if self._cam is None:
-            cam = self._Picamera2()
-            # Capture in RGB888 so the JPEG has NATURAL colour. The sensor default
-            # is BGR888 → red/blue swapped → the purple tint. Natural colour is best
-            # for BOTH the farmer's eyes and the model (trained on real-colour images).
-            cam.configure(cam.create_still_configuration(main={"format": "RGB888"}))
+            # IMX219 NoIR (no IR-cut filter) needs its own tuning file — without it
+            # the ISP applies standard colour matrices and the image comes out purple.
+            tuning = self._Picamera2.load_tuning_file("imx219_noir.json")
+            cam = self._Picamera2(tuning=tuning)
+            cam.configure(cam.create_still_configuration())
             cam.options["quality"] = 90   # crisp JPEG for human review + inference
             cam.start()
             time.sleep(1.5)          # one-time sensor warm-up only
