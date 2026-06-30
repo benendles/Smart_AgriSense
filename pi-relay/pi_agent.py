@@ -237,6 +237,11 @@ def mqtt_loop():
                 elif "state" in cmd:
                     _manual.add(act)
                     print(f"[mode] {act} -> MANUAL (state={cmd.get('state')})")
+            # Don't relay an AUTO dose (e.g. cloud pesticide) for an actuator the
+            # farmer has locked to manual — manual always wins.
+            if "seconds" in cmd and act in _manual:
+                print(f"[manual] {act} is MANUAL — ignoring auto dose")
+                return
             print(f"[mqtt] actuator command -> ESP: {cmd}")
             relay_to_esp(cmd)
             return
