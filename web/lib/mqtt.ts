@@ -13,9 +13,13 @@ const ACTUATOR_HW: Record<string, string> = {
   pesticide: "pesticide",
 };
 
-// Publish a persistent ON/OFF command for one pump:
-//   { "actuator": "water", "state": "on" } -> the ESP holds that relay until "off".
-export async function publishActuatorState(actuator: string, on: boolean): Promise<void> {
+// Publish an actuator command. The Pi reads BOTH fields:
+//   { actuator, state:"on"|"off" }            -> manual: hold the relay + lock out auto
+//   { actuator, state:"off", mode:"auto" }    -> release the relay + hand back to the engine
+export async function publishActuatorCommand(
+  actuator: string,
+  payload: { state?: "on" | "off"; mode?: "auto" | "manual" }
+): Promise<void> {
   const hw = ACTUATOR_HW[actuator];
   if (!hw) throw new Error(`unknown actuator: ${actuator}`);
 
@@ -27,7 +31,7 @@ export async function publishActuatorState(actuator: string, on: boolean): Promi
   try {
     await client.publishAsync(
       ACTUATOR_TOPIC,
-      JSON.stringify({ actuator: hw, state: on ? "on" : "off" }),
+      JSON.stringify({ actuator: hw, ...payload }),
       { qos: 1 }
     );
   } finally {

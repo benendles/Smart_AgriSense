@@ -37,13 +37,21 @@ OneWire oneWire(PIN_DS18B20);
 DallasTemperature soilTemp(&oneWire);
 unsigned long lastCycle = 0;
 
+const int RELAY_PINS[3] = { PIN_WATER, PIN_FERTILIZER, PIN_PESTICIDE };
+unsigned long doseUntil[3] = { 0, 0, 0 };   // millis() when a timed dose ends (0 = none)
+
 void relayWrite(int pin, bool on) { digitalWrite(pin, (on == RELAY_ACTIVE_HIGH) ? HIGH : LOW); }
 
-// Run one relay for N seconds (a command from the Pi).
-void doseRelay(int pin, int seconds) {
-  relayWrite(pin, true);
-  delay((unsigned long)seconds * 1000UL);
-  relayWrite(pin, false);
+// Persistent ON/OFF — immediate, and cancels any running timed dose.
+void setRelay(int idx, bool on) {
+  relayWrite(RELAY_PINS[idx], on);
+  doseUntil[idx] = 0;
+}
+
+// Start a timed dose WITHOUT blocking: relay on now, loop() turns it off later.
+void startDose(int idx, int seconds) {
+  relayWrite(RELAY_PINS[idx], true);
+  doseUntil[idx] = millis() + (unsigned long)seconds * 1000UL;
 }
 
 int readSoilMoisturePct() {
@@ -55,27 +63,29 @@ float readPh() {
   return constrain(PH_SLOPE * volts + PH_OFFSET, 0.0, 14.0);
 }
 
-// Map an actuator name to its relay pin (-1 if unknown).
-int relayPinFor(const char* act) {
-  if (!strcmp(act, "water"))      return PIN_WATER;
-  if (!strcmp(act, "fertilizer")) return PIN_FERTILIZER;
-  if (!strcmp(act, "pesticide"))  return PIN_PESTICIDE;
+// Map an actuator name to its relay channel index (-1 if unknown).
+int relayIndexFor(const char* act) {
+  if (!strcmp(act, "water"))      return 0;
+  if (!strcmp(act, "fertilizer")) return 1;
+  if (!strcmp(act, "pesticide"))  return 2;
   return -1;
 }
 
 // Execute a command line coming DOWN from the Pi. No decisions here — just act.
-//   {"actuator":"water","state":"on"|"off"} -> hold the relay (manual override from dashboard)
-//   {"actuator":"water","seconds":N}        -> timed dose (decision engine / pesticide)
+//   {"actuator":"water","state":"on"|"off"} -> hold the relay (manual override) — IMMEDIATE
+//   {"actuator":"water","seconds":N}        -> non-blocking timed dose (engine / pesticide)
+// Never blocks, so a manual OFF is always honoured instantly, even mid-dose.
 void handlePiCommand(const String& line) {
   StaticJsonDocument<160> cmd;
   if (deserializeJson(cmd, line)) return;            // ignore non-JSON lines
-  int pin = relayPinFor(cmd["actuator"] | "");
-  if (pin < 0) return;
+  int idx = relayIndexFor(cmd["actuator"] | "");
+  if (idx < 0) return;
   if (cmd.containsKey("state")) {
-    relayWrite(pin, !strcmp(cmd["state"] | "", "on"));   // persistent ON/OFF
-  } else {
-    doseRelay(pin, cmd["seconds"] | DEFAULT_DOSE_S);     // timed dose
+    setRelay(idx, !strcmp(cmd["state"] | "", "on"));   // immediate persistent ON/OFF
+  } else if (cmd.containsKey("seconds")) {
+    startDose(idx, cmd["seconds"] | DEFAULT_DOSE_S);   // non-blocking timed dose
   }
+  // {"mode":"auto"} or anything else → no relay change (the Pi owns mode logic).
 }
 
 void setup() {
@@ -95,9 +105,18 @@ void loop() {
     if (line.length()) handlePiCommand(line);
   }
 
-  // 2. Every cycle: read all sensors and send them up to the Pi. No decisions.
-  if (millis() - lastCycle < CYCLE_MS) return;
-  lastCycle = millis();
+  // 2. Expire any finished timed doses (non-blocking — keeps the loop responsive).
+  unsigned long now = millis();
+  for (int i = 0; i < 3; i++) {
+    if (doseUntil[i] != 0 && now >= doseUntil[i]) {
+      relayWrite(RELAY_PINS[i], false);
+      doseUntil[i] = 0;
+    }
+  }
+
+  // 3. Every cycle: read all sensors and send them up to the Pi. No decisions.
+  if (now - lastCycle < CYCLE_MS) return;
+  lastCycle = now;
 
   int   soilPct = readSoilMoisturePct();
   soilTemp.requestTemperatures();

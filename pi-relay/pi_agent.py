@@ -53,6 +53,11 @@ RAINFALL = float(os.getenv("RAINFALL_MM", "120"))
 SOIL_MOIST_THRESHOLD = int(os.getenv("SOIL_MOIST_THRESHOLD", "40"))  # irrigate below this %
 ALERTS_TOPIC = os.getenv("ALERTS_TOPIC", "agrisense/alerts")
 
+# Actuators (hardware names) the dashboard has put in MANUAL mode. While an
+# actuator is in this set the auto decision engine must NOT touch it — the
+# farmer's manual ON/OFF wins. The web sets/clears this via actuator commands.
+_manual: set = set()
+
 # Path-based (ingress) vs port-based (docker-compose) URL builders
 def upload_url(service: str) -> str:
     # Upload the captured image for the farmer to REVIEW (not auto-analyse).
@@ -222,6 +227,16 @@ def mqtt_loop():
                 cmd = json.loads(msg.payload.decode())
             except Exception:
                 return
+            act = cmd.get("actuator")
+            # Track manual-mode lock so the decision engine won't fight the dashboard:
+            #   {mode:"auto"} -> release the lock;  {state:...} -> manual, lock it.
+            if act:
+                if cmd.get("mode") == "auto":
+                    _manual.discard(act)
+                    print(f"[mode] {act} -> AUTO (engine resumes)")
+                elif "state" in cmd:
+                    _manual.add(act)
+                    print(f"[mode] {act} -> MANUAL (state={cmd.get('state')})")
             print(f"[mqtt] actuator command -> ESP: {cmd}")
             relay_to_esp(cmd)
             return
@@ -339,9 +354,12 @@ def decide_actions(data: dict):
     hum   = data.get("humidity")
     ph    = data.get("ph")
 
-    # 1. Irrigation — only when the soil is dry.
+    # 1. Irrigation — only when the soil is dry. Skip entirely if the farmer put
+    #    irrigation in MANUAL mode (their ON/OFF wins; the engine stays out).
     # Guard: soilMoisture==0 means probe disconnected (real soil is never bone-dry at 0).
-    if soil is not None and soil > 0 and soil < SOIL_MOIST_THRESHOLD:
+    if "water" in _manual:
+        print("[decide] irrigation is MANUAL — engine not touching it")
+    elif soil is not None and soil > 0 and soil < SOIL_MOIST_THRESHOLD:
         secs = _water_seconds(soilT, hum)
         if secs > 0:
             relay_to_esp({"actuator": "water", "seconds": secs})
@@ -359,8 +377,11 @@ def decide_actions(data: dict):
     elif ph == 14:
         print("[decide] pH=14 — probe disconnected, skipping pH alert")
 
-    # 3. Fertilizer — multi-condition: moist enough, not too hot, and pH says it helps.
-    if (soil is not None and soil > 40 and soilT is not None and soilT < 35
+    # 3. Fertilizer — multi-condition: moist enough, not too hot, and pH says it
+    #    helps. Skip if the farmer put fertilizer in MANUAL mode.
+    if "fertilizer" in _manual:
+        print("[decide] fertilizer is MANUAL — engine not touching it")
+    elif (soil is not None and soil > 40 and soilT is not None and soilT < 35
             and ph is not None and 7.5 < ph <= 8.5):
         relay_to_esp({"actuator": "fertilizer", "seconds": 8})
 

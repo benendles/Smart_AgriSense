@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ActuatorName, ActuatorState, AutomationUpdateBody } from "@/lib/types";
 import { automationState } from "@/lib/automationStore";
-import { publishActuatorState } from "@/lib/mqtt";
+import { publishActuatorCommand } from "@/lib/mqtt";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +37,17 @@ export async function POST(
   // manual hold (off) so the Pi decision engine can drive it on its own.
   const relayOn = mode === "manual" && active;
 
-  // Drive the real pump: publish the ON/OFF command to the broker → Pi → ESP32.
+  // Manual → just a state command (the Pi locks out auto for this actuator).
+  // Auto   → state:off + mode:auto (release the relay AND the auto lock).
+  const payload =
+    mode === "manual"
+      ? { state: (active ? "on" : "off") as "on" | "off" }
+      : { state: "off" as const, mode: "auto" as const };
+
+  // Drive the real pump: publish the command to the broker → Pi → ESP32.
   // If the broker/Pi is unreachable, report it instead of pretending it worked.
   try {
-    await publishActuatorState(actuator, relayOn);
+    await publishActuatorCommand(actuator, payload);
   } catch (e) {
     return NextResponse.json(
       { error: `pump command failed (broker/Pi unreachable): ${(e as Error).message}` },
