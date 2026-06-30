@@ -77,6 +77,7 @@ def recommend_url() -> str:
 class Hardware:
     def __init__(self):
         self.real_camera = self.real_sensors = False
+        self._cam = None   # kept warm between captures (avoids slow / failed retakes)
         try:
             from picamera2 import Picamera2  # noqa
             self._Picamera2 = Picamera2
@@ -104,13 +105,39 @@ class Hardware:
         print(f"[hw] camera={'REAL' if self.real_camera else 'SIMULATED'} "
               f"sensors={'REAL' if self.real_sensors else 'SIMULATED'}")
 
-    def capture_jpeg(self) -> bytes:
-        if self.real_camera:
+    def _ensure_camera(self):
+        """Create + start the camera ONCE and keep it warm. Re-opening a fresh
+        Picamera2 on every shot is slow AND — because the previous object never
+        released the device — makes the 2nd capture (retake) fail with no image.
+        So we hold one warm instance and just capture from it each time."""
+        if self._cam is None:
             cam = self._Picamera2()
             cam.configure(cam.create_still_configuration())
-            cam.start(); time.sleep(1.5)
-            buf = io.BytesIO(); cam.capture_file(buf, format="jpeg"); cam.stop()
-            return buf.getvalue()
+            cam.start()
+            time.sleep(1.5)          # one-time sensor warm-up only
+            self._cam = cam
+        return self._cam
+
+    def capture_jpeg(self) -> bytes:
+        if self.real_camera:
+            try:
+                cam = self._ensure_camera()
+                buf = io.BytesIO()
+                cam.capture_file(buf, format="jpeg")
+                return buf.getvalue()
+            except Exception as e:
+                # Camera wedged → fully release it, rebuild once, retry.
+                print(f"[camera] capture failed ({e}); resetting camera")
+                try:
+                    if self._cam is not None:
+                        self._cam.close()
+                except Exception:
+                    pass
+                self._cam = None
+                cam = self._ensure_camera()
+                buf = io.BytesIO()
+                cam.capture_file(buf, format="jpeg")
+                return buf.getvalue()
         # simulated leaf frame
         from PIL import Image, ImageDraw
         img = Image.new("RGB", (256, 256), (235, 240, 230))
