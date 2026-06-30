@@ -27,7 +27,7 @@ const bool RELAY_ACTIVE_HIGH = false;  // most relay boards are active-LOW (LOW 
 
 // ── Calibration (measure for YOUR probes — see README §3) ─────────────────────
 const int   SOIL_RAW_DRY = 3200, SOIL_RAW_WET = 1400;
-const float PH_SLOPE = -5.70, PH_OFFSET = 21.34;
+const float PH_SLOPE = -5.70, PH_OFFSET = 17.48;  // single-point cal: tap water @ phRaw≈2283 = pH 7.0
 
 const unsigned long CYCLE_MS = 30000;   // read + report every 30 s
 const int DEFAULT_DOSE_S = 10;          // used only if a command omits "seconds"
