@@ -16,6 +16,7 @@ import type {
   InsectDetectionData,
   PlantDetectionData,
   AgricultureData,
+  SensorLogRow,
 } from "./types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -451,4 +452,14 @@ export async function getHistory(): Promise<HistoryData> {
     if (data) return data;
   }
   return mockHistory();
+}
+
+// Raw stored readings (newest first) for the Data Log table.
+export async function getSensorLog(limit = 200): Promise<SensorLogRow[]> {
+  const url = process.env.SENSOR_SERVICE_URL;
+  if (url) {
+    const data = await fetchService<SensorLogRow[]>(`${url}/sensors/log?limit=${limit}`);
+    if (data) return data;
+  }
+  return [];
 }

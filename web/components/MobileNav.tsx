@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Bell, LineChart, Bug, Sprout, Tractor, Leaf } from "lucide-react";
+import { LayoutDashboard, Bell, LineChart, Bug, Sprout, Tractor, Leaf, Database } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/",           label: "Home",    icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/agriculture",label: "Farm",    icon: Tractor         },
   { href: "/alerts",     label: "Alerts",  icon: Bell            },
   { href: "/history",    label: "History", icon: LineChart       },
+  { href: "/data",       label: "Data",    icon: Database        },
 ];
 
 export default function MobileNav() {

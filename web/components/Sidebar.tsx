@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Leaf, LayoutDashboard, Bell, LineChart, Bug, Sprout, Tractor } from "lucide-react";
+import { Leaf, LayoutDashboard, Bell, LineChart, Bug, Sprout, Tractor, Database } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/",           label: "Dashboard",        icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/agriculture",label: "Farm Practice",    icon: Tractor         },
   { href: "/alerts",     label: "Alerts",           icon: Bell            },
   { href: "/history",    label: "History",          icon: LineChart       },
+  { href: "/data",       label: "Data Log",         icon: Database        },
 ];
 
 export default function Sidebar() {

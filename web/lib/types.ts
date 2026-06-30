@@ -9,6 +9,17 @@ export interface SensorData {
   online: boolean;
 }
 
+// One raw stored reading, as the data-log table shows it.
+export interface SensorLogRow {
+  temperature: number;
+  humidity: number;
+  ph: number;
+  soilMoisture: number | null;
+  soilTemp: number | null;
+  online: boolean;
+  timestamp: string;
+}
+
 // Disease detection types
 export interface DiseaseData {
   disease: string;

@@ -101,6 +101,12 @@ def sensor_history(hours: int = 24):
     }
 
 
+@app.get("/sensors/log")
+def sensor_log(limit: int = 100):
+    """Raw sensor readings as stored rows (newest first) — for the data-log table."""
+    return sensor_store.history(limit)
+
+
 @app.get("/recommendation/latest")
 def get_latest():
     data = store.latest()
