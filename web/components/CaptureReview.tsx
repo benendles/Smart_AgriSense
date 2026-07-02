@@ -49,8 +49,8 @@ export default function CaptureReview({
           return;
         }
       } catch { /* keep polling */ }
-      if (tries >= 30) { stop(); setState("idle"); }   // give up after ~60s
-    }, 2000);
+      if (tries >= 45) { stop(); setState("idle"); }   // give up after ~45s
+    }, 1000);
   }, [service]);
 
   const useImage = async () => {
