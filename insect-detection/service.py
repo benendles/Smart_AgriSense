@@ -145,6 +145,7 @@ def maybe_trigger_pesticide(result: dict) -> None:
             payload=json.dumps({"actuator": "pesticide", "seconds": 10,
                                 "reason": f"{pest} detected ({conf:.0%})"}),
             hostname=MQTT_BROKER, port=MQTT_PORT,
+            qos=1,   # wait for broker ACK — QoS 0 here silently drops the message
         )
         print(f"[pesticide] spray commanded — {pest} ({conf:.2f})")
     except Exception as e:
@@ -216,6 +217,7 @@ def trigger_capture():
             payload=json.dumps({"service": "insect"}),
             hostname=MQTT_BROKER,
             port=MQTT_PORT,
+            qos=1,   # wait for broker ACK — QoS 0 here silently drops the message
         )
         return {"queued": True}
     except Exception as e:

@@ -31,6 +31,9 @@ export default function CaptureReview({
   const capture = useCallback(async () => {
     setState("sending");
     setSrc(null);
+    // Clear any previously-held photo FIRST, so the poll below can only ever
+    // return the genuinely NEW image (not the last one still sitting in /pending).
+    try { await fetch(`/api/capture/${service}/discard`, { method: "POST" }); } catch { /* ignore */ }
     try { await fetch(`/api/${service}`, { method: "POST" }); } catch { /* ignore */ }
     setState("waiting");
     let tries = 0;

@@ -157,6 +157,7 @@ def trigger_capture():
             payload=json.dumps({"service": "plant"}),
             hostname=MQTT_BROKER,
             port=MQTT_PORT,
+            qos=1,   # wait for broker ACK — QoS 0 here silently drops the message
         )
         return {"queued": True}
     except Exception as e:
