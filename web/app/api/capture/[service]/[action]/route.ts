@@ -33,7 +33,21 @@ export async function POST(
   { params }: { params: { service: string; action: string } }
 ) {
   const base = SERVICE_URLS[params.service];
-  if (!base || (params.action !== "confirm" && params.action !== "discard")) {
+  if (!base) return NextResponse.json({ ok: false }, { status: 404 });
+
+  // upload: forward the user's multipart photo to the service's /upload (which
+  // holds it for review, exactly like a Pi capture).
+  if (params.action === "upload") {
+    try {
+      const form = await _req.formData();
+      const r = await fetch(`${base}/${params.service}/upload`, { method: "POST", body: form });
+      return NextResponse.json(await r.json().catch(() => ({})), { status: r.status });
+    } catch {
+      return NextResponse.json({ ok: false }, { status: 502 });
+    }
+  }
+
+  if (params.action !== "confirm" && params.action !== "discard") {
     return NextResponse.json({ ok: false }, { status: 404 });
   }
   try {

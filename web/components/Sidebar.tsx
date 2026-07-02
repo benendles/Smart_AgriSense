@@ -55,7 +55,7 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="px-5 py-4 border-t border-gray-700">
         <p className="text-xs text-gray-500">Cameroon Smallholder Farms</p>
-        <p className="text-xs text-gray-600 mt-0.5">v1.0 — Mock Mode</p>
+        <p className="text-xs text-gray-600 mt-0.5">v1.0 — Live</p>
       </div>
     </aside>
   );

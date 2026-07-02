@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Camera, Loader2, Check, RotateCcw, ZoomIn, X } from "lucide-react";
+import { Camera, Loader2, Check, RotateCcw, ZoomIn, X, Upload } from "lucide-react";
 
 type State = "idle" | "sending" | "waiting" | "review" | "analyzing";
 
@@ -23,18 +23,26 @@ export default function CaptureReview({
   const [zoomOpen, setZoomOpen] = useState(false);   // fullscreen inspect view
   const [zoomed, setZoomed] = useState(false);       // toggle fit ↔ 2.5×
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const stop = () => {
     if (poll.current) { clearInterval(poll.current); poll.current = null; }
   };
 
-  const capture = useCallback(async () => {
+  // No file → the Pi camera captures. With a file → upload that photo instead
+  // (e.g. a sharp phone photo), bypassing the Pi camera. Same review flow either way.
+  const capture = useCallback(async (file?: File) => {
     setState("sending");
     setSrc(null);
     // Clear any previously-held photo FIRST, so the poll below can only ever
     // return the genuinely NEW image (not the last one still sitting in /pending).
     try { await fetch(`/api/capture/${service}/discard`, { method: "POST" }); } catch { /* ignore */ }
-    try { await fetch(`/api/${service}`, { method: "POST" }); } catch { /* ignore */ }
+    if (file) {
+      const fd = new FormData(); fd.append("image", file);
+      try { await fetch(`/api/capture/${service}/upload`, { method: "POST", body: fd }); } catch { /* ignore */ }
+    } else {
+      try { await fetch(`/api/${service}`, { method: "POST" }); } catch { /* ignore */ }
+    }
     setState("waiting");
     let tries = 0;
     stop();
@@ -107,21 +115,42 @@ export default function CaptureReview({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={capture}
-          disabled={state !== "idle"}
-          className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm font-semibold transition-all ${
-            state !== "idle"
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-primary-600 hover:bg-primary-700 text-white shadow-sm hover:shadow-md"
-          }`}
-        >
-          {state === "idle"      && <><Camera className="w-5 h-5" /> Take Image Now</>}
-          {state === "sending"   && <><Loader2 className="w-5 h-5 animate-spin" /> Sending command to Pi…</>}
-          {state === "waiting"   && <><Loader2 className="w-5 h-5 animate-spin" /> Waiting for Pi image…</>}
-          {state === "analyzing" && <><Loader2 className="w-5 h-5 animate-spin" /> Analysing…</>}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => capture()}
+            disabled={state !== "idle"}
+            className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm font-semibold transition-all ${
+              state !== "idle"
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                : "bg-primary-600 hover:bg-primary-700 text-white shadow-sm hover:shadow-md"
+            }`}
+          >
+            {state === "idle"      && <><Camera className="w-5 h-5" /> Take Image Now</>}
+            {state === "sending"   && <><Loader2 className="w-5 h-5 animate-spin" /> Sending…</>}
+            {state === "waiting"   && <><Loader2 className="w-5 h-5 animate-spin" /> Waiting for image…</>}
+            {state === "analyzing" && <><Loader2 className="w-5 h-5 animate-spin" /> Analysing…</>}
+          </button>
+
+          {/* Upload a photo instead (e.g. a sharp phone photo) — bypasses the Pi camera */}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            aria-label="Upload a photo"
+            title="Upload a photo"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) capture(f); e.target.value = ""; }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            disabled={state !== "idle"}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" /> Upload a photo instead
+          </button>
+        </div>
       )}
 
       {/* Fullscreen inspect / zoom — tap image to zoom 2.5×, tap outside to close */}
