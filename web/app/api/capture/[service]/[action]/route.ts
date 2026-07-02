@@ -13,11 +13,11 @@ export async function GET(
   { params }: { params: { service: string; action: string } }
 ) {
   const base = SERVICE_URLS[params.service];
-  if (!base || params.action !== "pending") {
+  if (!base || (params.action !== "pending" && params.action !== "image")) {
     return new NextResponse(null, { status: 404 });
   }
   try {
-    const r = await fetch(`${base}/${params.service}/pending`, { cache: "no-store" });
+    const r = await fetch(`${base}/${params.service}/${params.action}`, { cache: "no-store" });
     if (!r.ok) return new NextResponse(null, { status: r.status });
     const buf = await r.arrayBuffer();
     return new NextResponse(buf, {

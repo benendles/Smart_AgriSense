@@ -159,7 +159,10 @@ async def analyze(image: UploadFile = File(...)):
     Raspberry Pi calls this after capturing a photo.
     Accepts: multipart/form-data with field name 'image'
     """
-    result = store.save(run_inference(await image.read()))
+    global _last_image
+    img = await image.read()
+    _last_image = img
+    result = store.save(run_inference(img))
     maybe_trigger_pesticide(result)
     return result
 
@@ -168,6 +171,7 @@ async def analyze(image: UploadFile = File(...)):
 # Pi uploads to /upload (held, NOT analysed). Farmer reviews via /pending, then
 # /confirm runs inference, or /discard drops it so a new photo can be taken.
 _pending: bytes | None = None
+_last_image: bytes | None = None   # the most recently ANALYSED image, for the dashboard
 
 
 @app.post("/insect/upload")
@@ -184,12 +188,21 @@ def pending():
     return Response(content=_pending, media_type="image/jpeg")
 
 
+@app.get("/insect/image")
+def latest_image():
+    """The most recently ANALYSED image — shown on the dashboard result card."""
+    if _last_image is None:
+        raise HTTPException(status_code=404, detail="No analysed image yet")
+    return Response(content=_last_image, media_type="image/jpeg")
+
+
 @app.post("/insect/confirm")
 def confirm():
-    global _pending
+    global _pending, _last_image
     if _pending is None:
         raise HTTPException(status_code=404, detail="No pending image")
     result = store.save(run_inference(_pending))
+    _last_image = _pending      # keep the analysed image for the dashboard
     _pending = None
     maybe_trigger_pesticide(result)
     return result

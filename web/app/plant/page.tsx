@@ -88,6 +88,14 @@ export default function PlantDetectionPage() {
               </div>
             ) : latest ? (
               <div className="space-y-5">
+                {/* Latest analysed image from the Pi camera */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/capture/plant/image?t=${encodeURIComponent(latest.timestamp)}`}
+                  alt="Latest analysed leaf"
+                  className="w-full max-h-64 object-contain rounded-xl border border-gray-200 bg-gray-50"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
                 {/* Plant ID */}
                 <div className="flex items-start gap-4 p-4 bg-primary-50 rounded-xl">
                   <div className="p-3 bg-primary-100 rounded-full">

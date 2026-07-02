@@ -76,6 +76,14 @@ export default function DiseaseDetectionPage() {
               </div>
             ) : latest ? (
               <div className="space-y-4">
+                {/* Latest analysed image from the Pi camera */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/capture/disease/image?t=${encodeURIComponent(latest.timestamp)}`}
+                  alt="Latest analysed leaf photo"
+                  className="w-full max-h-64 object-contain rounded-xl border border-gray-200 bg-gray-50"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
                 {/* Status block */}
                 <div className={`flex items-start gap-4 p-4 rounded-xl ${isHealthy ? "bg-green-50" : "bg-red-50"}`}>
                   <div className={`p-2.5 rounded-full ${isHealthy ? "bg-green-100" : "bg-red-100"}`}>
