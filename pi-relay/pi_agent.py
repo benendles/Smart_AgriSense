@@ -59,6 +59,10 @@ ALERTS_TOPIC = os.getenv("ALERTS_TOPIC", "agrisense/alerts")
 # farmer's manual ON/OFF wins. The web sets/clears this via actuator commands.
 _manual: set = set()
 
+# Auto-driven actuator states (None = unknown). The engine sends an ON/OFF command
+# only when the desired state changes — closed-loop control, not fixed-time doses.
+_auto_state = {"water": None, "fertilizer": None}
+
 # Path-based (ingress) vs port-based (docker-compose) URL builders
 def upload_url(service: str) -> str:
     # Upload the captured image for the farmer to REVIEW (not auto-analyse).
@@ -268,6 +272,8 @@ def mqtt_loop():
             if act:
                 if cmd.get("mode") == "auto":
                     _manual.discard(act)
+                    if act in _auto_state:
+                        _auto_state[act] = None   # force the engine to re-assert next cycle
                     print(f"[mode] {act} -> AUTO (engine resumes)")
                 elif "state" in cmd:
                     _manual.add(act)
@@ -388,46 +394,46 @@ def publish_alert(message: str):
         print(f"[alert] publish failed: {e}")
 
 
+def _set_auto(actuator: str, want_on: bool, why: str = ""):
+    """CLOSED-LOOP drive: hold an auto actuator ON while its condition holds, and
+    turn it OFF the moment the reading returns to target. Sends a command only when
+    the desired state CHANGES (persistent ON/OFF, not a fixed-time dose). Manual
+    mode always wins — the engine stays out of any actuator the farmer controls."""
+    if actuator in _manual:
+        return
+    if _auto_state.get(actuator) != want_on:
+        relay_to_esp({"actuator": actuator, "state": "on" if want_on else "off"})
+        _auto_state[actuator] = want_on
+        print(f"[decide] {actuator} -> {'ON' if want_on else 'OFF'} ({why})")
+
+
 def decide_actions(data: dict):
-    """Runs on every ESP reading: decides irrigation + fertilizer, sends commands
-    back to the ESP, and raises pH alerts. (Pesticide comes from the insect AI.)"""
+    """Runs on every ESP reading. Closed-loop control: each pump stays ON until the
+    reading reaches target, then stops immediately. (Pesticide is NOT here — it's a
+    fixed-time spray fired by the insect AI, since there is no sensor to close on.)"""
     soil  = data.get("soilMoisture")
     soilT = data.get("soilTemp")
-    hum   = data.get("humidity")
     ph    = data.get("ph")
 
-    # 1. Irrigation — whenever the soil is dry (0% = bone dry counts). Skip only if
-    #    the farmer put irrigation in MANUAL mode (their ON/OFF wins).
+    # 1. Irrigation — ON while soil is dry OR hot; OFF once it's moist AND cool.
     dry = soil is not None and soil < SOIL_MOIST_THRESHOLD
     hot = soilT is not None and soilT > SOIL_TEMP_HIGH
-    if "water" in _manual:
-        print("[decide] irrigation is MANUAL — engine not touching it")
-    elif dry or hot:
-        secs = _water_seconds(soilT, hum)
-        if secs > 0:
-            relay_to_esp({"actuator": "water", "seconds": secs})
-            why = f"soil {soil}% < {SOIL_MOIST_THRESHOLD}%" if dry else f"soil HOT {soilT}°C > {SOIL_TEMP_HIGH}°C"
-            print(f"[decide] {why} — irrigating {secs}s")
-        else:
-            print("[decide] soil dry but air too humid — irrigation delayed")
+    why = (f"soil {soil}% < {SOIL_MOIST_THRESHOLD}%" if dry
+           else f"soil {soilT}°C > {SOIL_TEMP_HIGH}°C" if hot
+           else f"soil {soil}% moist & cool — target met")
+    _set_auto("water", dry or hot, why)
 
-    # 2. pH analysis → alert.
-    # Guard: pH==14 means probe disconnected (pegged at ADC max).
+    # 2. pH analysis → alert (informational). pH==14 = probe pegged/disconnected.
     if ph is not None and ph < 14:
         alert = _ph_alert(ph)
         if alert:
             publish_alert(alert)
-    elif ph == 14:
-        print("[decide] pH=14 — probe disconnected, skipping pH alert")
 
-    # 3. Fertilizer — multi-condition: moist enough, not too hot, and pH says it
-    #    helps. Skip if the farmer put fertilizer in MANUAL mode.
-    if "fertilizer" in _manual:
-        print("[decide] fertilizer is MANUAL — engine not touching it")
-    elif (soil is not None and soil > 40 and soilT is not None and soilT < 35
-            and ph is not None and 7.5 < ph <= 9.0):
-        relay_to_esp({"actuator": "fertilizer", "seconds": 8})
-        print(f"[decide] moist soil {soil}% + alkaline pH {ph} — dosing fertilizer 8s")
+    # 3. Fertilizer — ON while soil moist + cool + alkaline; OFF once pH is back OK.
+    want_fert = (soil is not None and soil > 40 and soilT is not None and soilT < 35
+                 and ph is not None and 7.5 < ph <= 9.0)
+    _set_auto("fertilizer", want_fert,
+              f"moist soil + alkaline pH {ph}" if want_fert else "pH back in range — target met")
 
 
 def esp_serial_loop():

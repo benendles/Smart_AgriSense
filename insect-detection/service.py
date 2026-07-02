@@ -20,6 +20,7 @@ PORT        = int(os.getenv("PORT", 4004))
 MQTT_BROKER = os.getenv("MQTT_BROKER", "")   # e.g. "192.168.1.x" — leave empty if no Pi yet
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
 PEST_CONF_THRESHOLD = float(os.getenv("PEST_CONF_THRESHOLD", "0.65"))  # spray when pest conf ≥ this
+PESTICIDE_SECONDS   = int(os.getenv("PESTICIDE_SECONDS", "300"))       # fixed spray time (no sensor to close on)
 NO_PEST = {"No Pest Detected", "no pest", "Healthy", "healthy"}
 
 device = torch.device("cuda" if torch.cuda.is_available() else
@@ -142,7 +143,7 @@ def maybe_trigger_pesticide(result: dict) -> None:
         import paho.mqtt.publish as publish
         publish.single(
             topic="agrisense/actuator/cmd",
-            payload=json.dumps({"actuator": "pesticide", "seconds": 10,
+            payload=json.dumps({"actuator": "pesticide", "seconds": PESTICIDE_SECONDS,
                                 "reason": f"{pest} detected ({conf:.0%})"}),
             hostname=MQTT_BROKER, port=MQTT_PORT,
             qos=1,   # wait for broker ACK — QoS 0 here silently drops the message
