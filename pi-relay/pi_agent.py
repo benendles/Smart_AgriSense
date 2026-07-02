@@ -115,7 +115,10 @@ class Hardware:
             # the ISP applies standard colour matrices and the image comes out purple.
             tuning = self._Picamera2.load_tuning_file("imx219_noir.json")
             cam = self._Picamera2(tuning=tuning)
-            cam.configure(cam.create_still_configuration())
+            # 1640x1232 (not full 3280x2464) → ~0.4MB JPEG that uploads reliably
+            # over WiFi. Full-res ~2MB stalled/timed out on weak signal. The model
+            # downscales to 128px anyway, so no accuracy is lost.
+            cam.configure(cam.create_still_configuration(main={"size": (1640, 1232)}))
             cam.options["quality"] = 90   # crisp JPEG for human review + inference
             cam.start()
             time.sleep(1.5)          # one-time sensor warm-up only
@@ -282,7 +285,9 @@ def mqtt_loop():
         except Exception:
             service = "plant"
         print(f"[mqtt] capture command for '{service}'")
-        on_capture(service)
+        # Run capture+upload in its own thread so a slow upload never blocks the
+        # MQTT loop (which would drop keepalives / cause qos=1 redelivery pile-ups).
+        threading.Thread(target=on_capture, args=(service,), daemon=True).start()
 
     try:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)  # paho-mqtt >= 2.0
