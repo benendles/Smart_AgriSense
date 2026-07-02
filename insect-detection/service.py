@@ -19,7 +19,7 @@ MODEL_PATH  = Path(os.getenv("MODEL_PATH", "best_model.pth"))
 PORT        = int(os.getenv("PORT", 4004))
 MQTT_BROKER = os.getenv("MQTT_BROKER", "")   # e.g. "192.168.1.x" — leave empty if no Pi yet
 MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
-PEST_CONF_THRESHOLD = float(os.getenv("PEST_CONF_THRESHOLD", "0.9"))  # spray when pest conf ≥ this
+PEST_CONF_THRESHOLD = float(os.getenv("PEST_CONF_THRESHOLD", "0.65"))  # spray when pest conf ≥ this
 NO_PEST = {"No Pest Detected", "no pest", "Healthy", "healthy"}
 
 device = torch.device("cuda" if torch.cuda.is_available() else

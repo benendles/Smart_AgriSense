@@ -395,19 +395,17 @@ def decide_actions(data: dict):
     hum   = data.get("humidity")
     ph    = data.get("ph")
 
-    # 1. Irrigation — only when the soil is dry. Skip entirely if the farmer put
-    #    irrigation in MANUAL mode (their ON/OFF wins; the engine stays out).
-    # Guard: soilMoisture==0 means probe disconnected (real soil is never bone-dry at 0).
+    # 1. Irrigation — whenever the soil is dry (0% = bone dry counts). Skip only if
+    #    the farmer put irrigation in MANUAL mode (their ON/OFF wins).
     if "water" in _manual:
         print("[decide] irrigation is MANUAL — engine not touching it")
-    elif soil is not None and soil > 0 and soil < SOIL_MOIST_THRESHOLD:
+    elif soil is not None and soil < SOIL_MOIST_THRESHOLD:
         secs = _water_seconds(soilT, hum)
         if secs > 0:
             relay_to_esp({"actuator": "water", "seconds": secs})
+            print(f"[decide] soil {soil}% < {SOIL_MOIST_THRESHOLD}% — irrigating {secs}s")
         else:
             print("[decide] soil dry but air too humid — irrigation delayed")
-    elif soil == 0:
-        print("[decide] soilMoisture=0 — probe disconnected, skipping irrigation")
 
     # 2. pH analysis → alert.
     # Guard: pH==14 means probe disconnected (pegged at ADC max).
@@ -423,8 +421,9 @@ def decide_actions(data: dict):
     if "fertilizer" in _manual:
         print("[decide] fertilizer is MANUAL — engine not touching it")
     elif (soil is not None and soil > 40 and soilT is not None and soilT < 35
-            and ph is not None and 7.5 < ph <= 8.5):
+            and ph is not None and 7.5 < ph <= 9.0):
         relay_to_esp({"actuator": "fertilizer", "seconds": 8})
+        print(f"[decide] moist soil {soil}% + alkaline pH {ph} — dosing fertilizer 8s")
 
 
 def esp_serial_loop():
