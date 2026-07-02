@@ -51,6 +51,7 @@ RAINFALL = float(os.getenv("RAINFALL_MM", "120"))
 
 # ── Decision-engine thresholds (the Pi is the brain) ──────────────────────────
 SOIL_MOIST_THRESHOLD = int(os.getenv("SOIL_MOIST_THRESHOLD", "40"))  # irrigate below this %
+SOIL_TEMP_HIGH       = int(os.getenv("SOIL_TEMP_HIGH", "38"))        # or irrigate above this °C (heat stress)
 ALERTS_TOPIC = os.getenv("ALERTS_TOPIC", "agrisense/alerts")
 
 # Actuators (hardware names) the dashboard has put in MANUAL mode. While an
@@ -397,13 +398,16 @@ def decide_actions(data: dict):
 
     # 1. Irrigation — whenever the soil is dry (0% = bone dry counts). Skip only if
     #    the farmer put irrigation in MANUAL mode (their ON/OFF wins).
+    dry = soil is not None and soil < SOIL_MOIST_THRESHOLD
+    hot = soilT is not None and soilT > SOIL_TEMP_HIGH
     if "water" in _manual:
         print("[decide] irrigation is MANUAL — engine not touching it")
-    elif soil is not None and soil < SOIL_MOIST_THRESHOLD:
+    elif dry or hot:
         secs = _water_seconds(soilT, hum)
         if secs > 0:
             relay_to_esp({"actuator": "water", "seconds": secs})
-            print(f"[decide] soil {soil}% < {SOIL_MOIST_THRESHOLD}% — irrigating {secs}s")
+            why = f"soil {soil}% < {SOIL_MOIST_THRESHOLD}%" if dry else f"soil HOT {soilT}°C > {SOIL_TEMP_HIGH}°C"
+            print(f"[decide] {why} — irrigating {secs}s")
         else:
             print("[decide] soil dry but air too humid — irrigation delayed")
 
